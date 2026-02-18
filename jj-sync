@@ -1,0 +1,229 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Determine script directory for sourcing lib files
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Source library files
+source "$SCRIPT_DIR/lib/env.sh"
+source "$SCRIPT_DIR/lib/ui.sh"
+source "$SCRIPT_DIR/lib/git-plumbing.sh"
+source "$SCRIPT_DIR/lib/revisions.sh"
+source "$SCRIPT_DIR/lib/docs.sh"
+source "$SCRIPT_DIR/lib/gc.sh"
+
+# Global flags (set by parse_args)
+DRY_RUN=false
+VERBOSE=false
+FORCE=false
+SYNC_MODE="revs"  # revs, docs, both
+
+# Override options
+OPT_REMOTE=""
+OPT_MACHINE=""
+
+usage() {
+    cat <<EOF
+Usage: jj-sync <command> [options]
+
+Sync WIP jj revisions and gitignored docs across machines.
+
+Commands:
+  push      Push to sync remote
+  pull      Pull from sync remote
+  status    Show what would be synced
+  gc        Garbage collect stale sync bookmarks and doc chains
+  clean     Remove ALL sync state (local + remote)
+  init      Interactive setup: configure remote, machine name
+  help      Show this help
+
+Flags:
+  --docs    Sync docs only (requires JJ_SYNC_DOCS)
+  --both    Sync revisions + docs (requires JJ_SYNC_DOCS)
+            Default (no flag): sync revisions only
+
+Options:
+  --remote <name>   Override sync remote (default: \$JJ_SYNC_REMOTE or 'sync')
+  --machine <name>  Override machine name (default: \$JJ_SYNC_MACHINE or hostname)
+  --dry-run         Show what would happen without doing it
+  --verbose         Show git/jj commands as they run
+  --force           Skip confirmation prompts
+
+Environment Variables:
+  JJ_SYNC_DOCS              Space-separated directories to sync (required for --docs/--both)
+  JJ_SYNC_REMOTE            Git remote name (default: sync)
+  JJ_SYNC_MACHINE           Machine identifier (default: hostname)
+  JJ_SYNC_GC_REVS_DAYS      GC threshold for rev bookmarks (default: 7)
+  JJ_SYNC_GC_DOCS_MAX_CHAIN GC threshold for doc chain length (default: 50)
+
+Examples:
+  jj-sync push              # Push WIP revisions
+  jj-sync push --both       # Push revisions and docs
+  jj-sync pull --docs       # Pull only docs
+  jj-sync status            # Show sync status
+EOF
+}
+
+main() {
+    local cmd=""
+
+    # Parse arguments (must be done in main, not subshell, to preserve globals)
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            push|pull|status|gc|clean|init|help)
+                cmd="$1"
+                shift
+                ;;
+            --docs)
+                SYNC_MODE="docs"
+                shift
+                ;;
+            --both)
+                SYNC_MODE="both"
+                shift
+                ;;
+            --remote)
+                OPT_REMOTE="$2"
+                shift 2
+                ;;
+            --machine)
+                OPT_MACHINE="$2"
+                shift 2
+                ;;
+            --dry-run)
+                DRY_RUN=true
+                shift
+                ;;
+            --verbose)
+                VERBOSE=true
+                shift
+                ;;
+            --force)
+                FORCE=true
+                shift
+                ;;
+            -h|--help)
+                usage
+                exit 0
+                ;;
+            *)
+                die "Unknown option: $1"
+                ;;
+        esac
+    done
+
+    # Handle help early
+    if [[ "$cmd" == "help" ]] || [[ -z "$cmd" ]]; then
+        usage
+        exit 0
+    fi
+
+    # Load environment and validate
+    load_env
+
+    # Apply overrides
+    [[ -n "$OPT_REMOTE" ]] && JJ_SYNC_REMOTE="$OPT_REMOTE"
+    [[ -n "$OPT_MACHINE" ]] && JJ_SYNC_MACHINE="$OPT_MACHINE"
+
+    # Validate docs env if needed
+    if [[ "$SYNC_MODE" == "docs" ]] || [[ "$SYNC_MODE" == "both" ]]; then
+        require_docs_env
+    fi
+
+    # Dispatch to command
+    case "$cmd" in
+        push)
+            cmd_push
+            ;;
+        pull)
+            cmd_pull
+            ;;
+        status)
+            cmd_status
+            ;;
+        gc)
+            cmd_gc
+            ;;
+        clean)
+            cmd_clean
+            ;;
+        init)
+            cmd_init
+            ;;
+        *)
+            die "Unknown command: $cmd"
+            ;;
+    esac
+}
+
+cmd_push() {
+    require_jj_repo
+    require_remote
+
+    case "$SYNC_MODE" in
+        revs)
+            push_revisions
+            ;;
+        docs)
+            push_docs
+            ;;
+        both)
+            push_revisions
+            push_docs
+            ;;
+    esac
+}
+
+cmd_pull() {
+    require_jj_repo
+    require_remote
+
+    case "$SYNC_MODE" in
+        revs)
+            pull_revisions
+            ;;
+        docs)
+            pull_docs
+            ;;
+        both)
+            pull_revisions
+            pull_docs
+            ;;
+    esac
+}
+
+cmd_status() {
+    require_jj_repo
+    show_status
+}
+
+cmd_gc() {
+    require_jj_repo
+    require_remote
+
+    gc_revisions
+
+    if [[ -n "${JJ_SYNC_DOCS:-}" ]]; then
+        gc_docs
+    fi
+}
+
+cmd_clean() {
+    require_jj_repo
+    require_remote
+
+    if [[ "$FORCE" != "true" ]]; then
+        if ! confirm "This will delete ALL sync state locally and on remote. Continue?"; then
+            log_info "Aborted."
+            exit 0
+        fi
+    fi
+
+    clean_all
+}
+
+cmd_init() {
+    init_setup
+}
+
+main "$@"

@@ -1,0 +1,10 @@
+# direnv
+.direnv/
+
+# Nix
+result
+result-*
+
+# Test artifacts
+tests/tmp/
+*.bats.tmp

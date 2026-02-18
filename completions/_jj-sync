@@ -1,0 +1,71 @@
+#compdef jj-sync
+# jj-sync zsh completion
+# Place in $fpath or source directly
+
+_jj_sync() {
+    local -a commands
+    local -a global_opts
+
+    commands=(
+        'push:Push WIP revisions and/or docs to sync remote'
+        'pull:Pull WIP revisions and/or docs from sync remote'
+        'status:Show sync status'
+        'gc:Garbage collect old bookmarks'
+        'clean:Remove all sync state (requires --force)'
+        'init:Initialize jj-sync for this repository'
+        'help:Show help message'
+    )
+
+    global_opts=(
+        '--help[Show help message]'
+        '--version[Show version]'
+        '--dry-run[Show what would be done without doing it]'
+        '--verbose[Show verbose output]'
+        '--remote=[Specify sync remote]:remote:_jj_sync_remotes'
+        '--machine=[Specify machine name]:machine:'
+    )
+
+    local -a push_pull_opts
+    push_pull_opts=(
+        '--docs[Sync docs only]'
+        '--both[Sync both revisions and docs]'
+    )
+
+    _arguments -C \
+        '1:command:->command' \
+        '*::arg:->args'
+
+    case "$state" in
+        command)
+            _describe -t commands 'jj-sync command' commands
+            _describe -t options 'options' global_opts
+            ;;
+        args)
+            case "${words[1]}" in
+                push|pull)
+                    _arguments \
+                        "${global_opts[@]}" \
+                        "${push_pull_opts[@]}"
+                    ;;
+                gc|clean)
+                    _arguments \
+                        "${global_opts[@]}" \
+                        '--force[Force operation without confirmation]'
+                    ;;
+                status|init|help)
+                    _arguments "${global_opts[@]}"
+                    ;;
+            esac
+            ;;
+    esac
+}
+
+_jj_sync_remotes() {
+    local -a remotes
+    if [[ -d .git ]] || [[ -d .jj ]]; then
+        remotes=(${(f)"$(git remote 2>/dev/null)"})
+        _describe -t remotes 'git remote' remotes
+    fi
+}
+
+_jj_sync "$@"
