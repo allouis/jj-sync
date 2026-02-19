@@ -47,6 +47,7 @@ teardown() {
     # Should fail with clear error
     [[ "$status" -ne 0 ]]
     [[ "$output" =~ "Remote 'nonexistent' not found" ]]
+    [[ "$output" =~ "Available remotes" ]]
 }
 
 @test "E3: Not in jj repo errors gracefully" {

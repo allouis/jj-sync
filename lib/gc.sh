@@ -170,10 +170,35 @@ show_status() {
 
     section "jj-sync status"
 
+    # Attempt remote resolution non-fatally
+    local remote_resolved=true
+    if [[ -n "$JJ_SYNC_REMOTE" ]]; then
+        if ! git_cmd remote get-url "$JJ_SYNC_REMOTE" >/dev/null 2>&1; then
+            remote_resolved=false
+        fi
+    else
+        # Try auto-detect without dying on failure
+        local remotes=()
+        local name
+        while IFS= read -r name; do
+            [[ -n "$name" ]] && remotes+=("$name")
+        done < <(list_git_remotes 2>/dev/null)
+
+        if [[ ${#remotes[@]} -eq 1 ]]; then
+            JJ_SYNC_REMOTE="${remotes[0]}"
+        else
+            remote_resolved=false
+        fi
+    fi
+
     # Remote info
-    local remote_url
-    remote_url=$(get_remote_url 2>/dev/null) || remote_url="(not configured)"
-    kv "Remote" "$JJ_SYNC_REMOTE → $remote_url"
+    if [[ "$remote_resolved" == "true" ]]; then
+        local remote_url
+        remote_url=$(get_remote_url 2>/dev/null) || remote_url="(unknown)"
+        kv "Remote" "$JJ_SYNC_REMOTE → $remote_url"
+    else
+        kv "Remote" "(not configured)"
+    fi
     kv "Machine" "$JJ_SYNC_MACHINE"
 
     # Local revisions
@@ -188,6 +213,19 @@ show_status() {
         if [[ $rev_count -gt 10 ]]; then
             echo "  ... and $((rev_count - 10)) more"
         fi
+    fi
+
+    # Remote sections require a resolved remote
+    if [[ "$remote_resolved" != "true" ]]; then
+        section "Docs"
+        if [[ -n "${JJ_SYNC_DOCS:-}" ]]; then
+            kv "JJ_SYNC_DOCS" "$JJ_SYNC_DOCS"
+            echo ""
+            list_doc_dirs
+        else
+            log_info "Not configured (set JJ_SYNC_DOCS to enable)"
+        fi
+        return 0
     fi
 
     # Remote revision state
@@ -279,7 +317,7 @@ init_setup() {
     echo ""
 
     # Check if remote already exists
-    local remote="${JJ_SYNC_REMOTE:-personal}"
+    local remote="${JJ_SYNC_REMOTE:-origin}"
     if git remote get-url "$remote" &>/dev/null; then
         local url
         url=$(git remote get-url "$remote")

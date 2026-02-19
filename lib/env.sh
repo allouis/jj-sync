@@ -13,7 +13,7 @@ JJ_SYNC_PREFIX="sync"
 
 # Load environment variables with defaults
 load_env() {
-    JJ_SYNC_REMOTE="${JJ_SYNC_REMOTE:-sync}"
+    JJ_SYNC_REMOTE="${JJ_SYNC_REMOTE:-}"
     JJ_SYNC_MACHINE="${JJ_SYNC_MACHINE:-$(hostname)}"
     JJ_SYNC_DOCS="${JJ_SYNC_DOCS:-}"
     JJ_SYNC_GC_REVS_DAYS="${JJ_SYNC_GC_REVS_DAYS:-7}"

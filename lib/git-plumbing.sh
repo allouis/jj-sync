@@ -46,22 +46,69 @@ require_jj_repo() {
     fi
 }
 
-# Check that the sync remote exists
-require_remote() {
-    local remote="$JJ_SYNC_REMOTE"
+# List all git remotes
+list_git_remotes() {
+    git_cmd remote
+}
 
-    if ! git_cmd remote get-url "$remote" >/dev/null 2>&1; then
-        cat >&2 <<EOF
-Error: Remote '$remote' not found
+# Resolve which remote to use for syncing
+# Sets JJ_SYNC_REMOTE as a side effect
+# Logic: explicit value > single remote auto-detect > error
+resolve_remote() {
+    # If already set (via env or --remote flag), validate it exists
+    if [[ -n "$JJ_SYNC_REMOTE" ]]; then
+        if ! git_cmd remote get-url "$JJ_SYNC_REMOTE" >/dev/null 2>&1; then
+            cat >&2 <<EOF
+Error: Remote '$JJ_SYNC_REMOTE' not found
 
-To set up jj-sync, add a sync remote:
-  jj git remote add $remote <your-remote-url>
+Available remotes:
+$(list_git_remotes 2>/dev/null | sed 's/^/  /')
 
-Example:
-  jj git remote add $remote git@github.com:yourusername/myrepo-sync.git
+Set a valid remote via --remote or JJ_SYNC_REMOTE.
 EOF
-        exit 1
+            exit 1
+        fi
+        return 0
     fi
+
+    # Auto-detect from available remotes
+    local remotes=()
+    local name
+    while IFS= read -r name; do
+        [[ -n "$name" ]] && remotes+=("$name")
+    done < <(list_git_remotes 2>/dev/null)
+
+    case ${#remotes[@]} in
+        0)
+            cat >&2 <<EOF
+Error: No git remotes configured
+
+Add a remote for jj-sync to push to:
+  jj git remote add origin <your-remote-url>
+EOF
+            exit 1
+            ;;
+        1)
+            JJ_SYNC_REMOTE="${remotes[0]}"
+            ;;
+        *)
+            cat >&2 <<EOF
+Error: Multiple git remotes found — specify which one to use
+
+Available remotes:
+$(printf '  %s\n' "${remotes[@]}")
+
+Set one via --remote <name> or JJ_SYNC_REMOTE=<name>.
+EOF
+            exit 1
+            ;;
+    esac
+}
+
+# Ensure git dir is detected and a valid remote is resolved
+require_remote() {
+    detect_git_dir
+    resolve_remote
 }
 
 # Get the URL of the sync remote

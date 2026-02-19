@@ -21,7 +21,7 @@ _jj_sync() {
         '--version[Show version]'
         '--dry-run[Show what would be done without doing it]'
         '--verbose[Show verbose output]'
-        '--remote=[Specify sync remote]:remote:_jj_sync_remotes'
+        '--remote=[Specify sync remote (auto-detected if one remote)]:remote:_jj_sync_remotes'
         '--machine=[Specify machine name]:machine:'
     )
 

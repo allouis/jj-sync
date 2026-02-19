@@ -22,8 +22,8 @@ teardown() {
         source "$PROJECT_ROOT/lib/env.sh"
         load_env
 
-        # Should have defaults
-        [[ "$JJ_SYNC_REMOTE" == "sync" ]]
+        # Remote should be empty (auto-detected later)
+        [[ -z "$JJ_SYNC_REMOTE" ]]
         [[ -n "$JJ_SYNC_MACHINE" ]]
         [[ "$JJ_SYNC_GC_REVS_DAYS" == "7" ]]
         [[ "$JJ_SYNC_GC_DOCS_MAX_CHAIN" == "50" ]]
@@ -126,4 +126,76 @@ teardown() {
 
     [[ "$status" -ne 0 ]]
     [[ "$output" == *"JJ_SYNC_DOCS"* ]]
+}
+
+@test "V9: Auto-detects single remote" {
+    cd_to_machine "$MACHINE_LAPTOP"
+
+    # Create a WIP change
+    make_change "test.txt" "hello" "Auto-detect test"
+
+    # Push without setting JJ_SYNC_REMOTE — should auto-detect "sync" (the only remote)
+    run env -u JJ_SYNC_REMOTE \
+        JJ_SYNC_MACHINE="$MACHINE_LAPTOP" \
+        "$JJ_SYNC" push
+
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == *"Pushed"* ]]
+
+    # Verify bookmark was created
+    local count
+    count=$(count_remote_bookmarks "sync/$MACHINE_LAPTOP/revs/*")
+    [[ "$count" -eq 1 ]]
+}
+
+@test "V10: Errors with multiple remotes" {
+    cd_to_machine "$MACHINE_LAPTOP"
+
+    # Add a second remote
+    git remote add other "$TEST_DIR/remote.git" 2>/dev/null
+
+    make_change "test.txt" "hello" "Multi-remote test"
+
+    # Push without setting JJ_SYNC_REMOTE — should error
+    run env -u JJ_SYNC_REMOTE \
+        JJ_SYNC_MACHINE="$MACHINE_LAPTOP" \
+        "$JJ_SYNC" push
+
+    [[ "$status" -ne 0 ]]
+    [[ "$output" == *"Multiple git remotes"* ]]
+
+    # Clean up
+    git remote remove other 2>/dev/null || true
+}
+
+@test "V11: Errors with zero remotes" {
+    cd_to_machine "$MACHINE_LAPTOP"
+
+    # Remove the only remote
+    git remote remove sync 2>/dev/null || true
+
+    make_change "test.txt" "hello" "No-remote test"
+
+    run env -u JJ_SYNC_REMOTE \
+        JJ_SYNC_MACHINE="$MACHINE_LAPTOP" \
+        "$JJ_SYNC" push
+
+    [[ "$status" -ne 0 ]]
+    [[ "$output" == *"No git remotes"* ]]
+
+    # Re-add so teardown doesn't break
+    git remote add sync "$TEST_DIR/remote.git" 2>/dev/null || true
+}
+
+@test "V12: Explicit nonexistent remote errors" {
+    cd_to_machine "$MACHINE_LAPTOP"
+
+    make_change "test.txt" "hello" "Bad remote test"
+
+    run env JJ_SYNC_REMOTE="nonexistent" \
+        JJ_SYNC_MACHINE="$MACHINE_LAPTOP" \
+        "$JJ_SYNC" push
+
+    [[ "$status" -ne 0 ]]
+    [[ "$output" == *"Remote 'nonexistent' not found"* ]]
 }
