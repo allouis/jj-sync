@@ -152,10 +152,10 @@ teardown() {
     [[ "$count" -eq 1 ]]
 }
 
-@test "V10: Errors with multiple remotes" {
+@test "V10: Errors with multiple remotes when none is origin or upstream" {
     cd_to_machine "$MACHINE_LAPTOP"
 
-    # Add a second remote
+    # Add a second remote (neither is origin or upstream)
     git remote add other "$TEST_DIR/remote.git" 2>/dev/null
 
     make_change "test.txt" "hello" "Multi-remote test"
@@ -167,7 +167,7 @@ teardown() {
         "$JJ_SYNC" push
 
     [[ "$status" -ne 0 ]]
-    [[ "$output" == *"Multiple git remotes"* ]]
+    [[ "$output" == *"none named 'origin' or 'upstream'"* ]]
 
     # Clean up
     git remote remove other 2>/dev/null || true
@@ -191,6 +191,70 @@ teardown() {
 
     # Re-add so teardown doesn't break
     git remote add sync "$TEST_DIR/remote.git" 2>/dev/null || true
+}
+
+@test "V12a: Auto-detects origin among multiple remotes" {
+    cd_to_machine "$MACHINE_LAPTOP"
+
+    # Rename sync to origin, add another remote
+    git remote rename sync origin 2>/dev/null
+    git remote add other "$TEST_DIR/remote.git" 2>/dev/null
+
+    make_change "test.txt" "hello" "Origin fallback test"
+
+    run env -u JJ_SYNC_REMOTE \
+        JJ_SYNC_USER="$TEST_USER" \
+        JJ_SYNC_MACHINE="$MACHINE_LAPTOP" \
+        "$JJ_SYNC" push
+
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == *"Pushed"* ]]
+
+    # Clean up
+    git remote remove other 2>/dev/null || true
+    git remote rename origin sync 2>/dev/null || true
+}
+
+@test "V12b: Auto-detects upstream among multiple remotes" {
+    cd_to_machine "$MACHINE_LAPTOP"
+
+    # Add upstream remote, keep sync as-is
+    git remote add upstream "$TEST_DIR/remote.git" 2>/dev/null
+
+    make_change "test.txt" "hello" "Upstream fallback test"
+
+    run env -u JJ_SYNC_REMOTE \
+        JJ_SYNC_USER="$TEST_USER" \
+        JJ_SYNC_MACHINE="$MACHINE_LAPTOP" \
+        "$JJ_SYNC" push
+
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == *"Pushed"* ]]
+
+    # Clean up
+    git remote remove upstream 2>/dev/null || true
+}
+
+@test "V12c: Errors when both origin and upstream exist" {
+    cd_to_machine "$MACHINE_LAPTOP"
+
+    # Rename sync to origin, add upstream
+    git remote rename sync origin 2>/dev/null
+    git remote add upstream "$TEST_DIR/remote.git" 2>/dev/null
+
+    make_change "test.txt" "hello" "Both remotes test"
+
+    run env -u JJ_SYNC_REMOTE \
+        JJ_SYNC_USER="$TEST_USER" \
+        JJ_SYNC_MACHINE="$MACHINE_LAPTOP" \
+        "$JJ_SYNC" push
+
+    [[ "$status" -ne 0 ]]
+    [[ "$output" == *"Both 'origin' and 'upstream'"* ]]
+
+    # Clean up
+    git remote remove upstream 2>/dev/null || true
+    git remote rename origin sync 2>/dev/null || true
 }
 
 @test "V13: User auto-detected from jj/git config" {

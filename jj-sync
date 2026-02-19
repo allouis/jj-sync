@@ -424,15 +424,36 @@ EOF
             JJ_SYNC_REMOTE="${remotes[0]}"
             ;;
         *)
-            cat >&2 <<EOF
-Error: Multiple git remotes found — specify which one to use
+            # Multiple remotes — try origin, then upstream
+            local has_origin=false has_upstream=false
+            local r
+            for r in "${remotes[@]}"; do
+                [[ "$r" == "origin" ]] && has_origin=true
+                [[ "$r" == "upstream" ]] && has_upstream=true
+            done
+
+            if [[ "$has_origin" == "true" ]] && [[ "$has_upstream" == "true" ]]; then
+                cat >&2 <<EOF
+Error: Both 'origin' and 'upstream' remotes found — specify which one to use
+
+Set one via --remote <name> or JJ_SYNC_REMOTE=<name>.
+EOF
+                exit 1
+            elif [[ "$has_origin" == "true" ]]; then
+                JJ_SYNC_REMOTE="origin"
+            elif [[ "$has_upstream" == "true" ]]; then
+                JJ_SYNC_REMOTE="upstream"
+            else
+                cat >&2 <<EOF
+Error: Multiple git remotes found, none named 'origin' or 'upstream'
 
 Available remotes:
 $(printf '  %s\n' "${remotes[@]}")
 
 Set one via --remote <name> or JJ_SYNC_REMOTE=<name>.
 EOF
-            exit 1
+                exit 1
+            fi
             ;;
     esac
 }
@@ -1303,6 +1324,21 @@ show_status() {
 
         if [[ ${#remotes[@]} -eq 1 ]]; then
             JJ_SYNC_REMOTE="${remotes[0]}"
+        elif [[ ${#remotes[@]} -gt 1 ]]; then
+            local has_origin=false has_upstream=false
+            local r
+            for r in "${remotes[@]}"; do
+                [[ "$r" == "origin" ]] && has_origin=true
+                [[ "$r" == "upstream" ]] && has_upstream=true
+            done
+
+            if [[ "$has_origin" == "true" ]] && [[ "$has_upstream" != "true" ]]; then
+                JJ_SYNC_REMOTE="origin"
+            elif [[ "$has_upstream" == "true" ]] && [[ "$has_origin" != "true" ]]; then
+                JJ_SYNC_REMOTE="upstream"
+            else
+                remote_resolved=false
+            fi
         else
             remote_resolved=false
         fi
@@ -1436,7 +1472,7 @@ Options:
 
 Environment Variables:
   JJ_SYNC_DOCS              Space-separated directories to sync (required for --docs/--both)
-  JJ_SYNC_REMOTE            Git remote name (auto-detected if repo has exactly one remote)
+  JJ_SYNC_REMOTE            Git remote name (auto-detected from origin/upstream)
   JJ_SYNC_USER              User identity for ref namespacing (default: jj/git user.email)
   JJ_SYNC_MACHINE           Machine identifier (default: hostname)
   JJ_SYNC_GC_REVS_DAYS      GC threshold for rev bookmarks (default: 7)
