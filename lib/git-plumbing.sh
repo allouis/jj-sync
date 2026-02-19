@@ -6,11 +6,18 @@ GIT_DIR=""
 GIT_WORK_TREE=""
 
 # Detect the git directory for the current jj repo
-# Sets GIT_DIR and GIT_WORK_TREE
+# Sets GIT_DIR and GIT_WORK_TREE, and cd's to the repo root
 # Works for both colocated (.git/) and non-colocated (.jj/repo/store/git/) repos
+# Works from any subdirectory within the repo
 detect_git_dir() {
     local repo_root
-    repo_root="$(pwd)"
+
+    # Use git to find the repo root (handles subdirectories)
+    if ! repo_root=$(git rev-parse --show-toplevel 2>/dev/null); then
+        return 1
+    fi
+
+    cd "$repo_root" || return 1
 
     # Try colocated first
     if [[ -d "$repo_root/.git" ]]; then

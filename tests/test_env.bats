@@ -376,3 +376,80 @@ teardown() {
     cd_to_machine "$MACHINE_DEV1"
     jj_has_change "$alice_change"
 }
+
+@test "V22: Push works from a subdirectory (colocated)" {
+    cd_to_machine "$MACHINE_LAPTOP"
+
+    # Create a change
+    make_change "src/main.rs" "fn main() {}" "Initial code"
+    jj new >/dev/null 2>&1
+
+    # Run jj-sync from a subdirectory
+    mkdir -p src/nested
+    cd src/nested
+
+    run_jj_sync "$MACHINE_LAPTOP" push
+
+    # Verify bookmark was pushed
+    cd_to_machine "$MACHINE_LAPTOP"
+    local count
+    count=$(count_remote_bookmarks "sync/$TEST_USER/$MACHINE_LAPTOP/*")
+    [[ "$count" -gt 0 ]]
+}
+
+@test "V23: Doc push works from a subdirectory" {
+    cd_to_machine "$MACHINE_LAPTOP"
+
+    # Create doc files at repo root
+    create_doc_dir "ai/docs" 2
+
+    # Run jj-sync from a subdirectory
+    mkdir -p src/nested
+    cd src/nested
+
+    run_jj_sync_with_docs "$MACHINE_LAPTOP" "ai/docs" push --docs
+
+    # Verify docs were pushed
+    assert_bookmark_exists_remote "sync/$TEST_USER/$MACHINE_LAPTOP/docs"
+}
+
+@test "V24: Push works from a subdirectory (non-colocated)" {
+    # Create a non-colocated repo
+    local machine="noncoloc"
+    create_jj_repo "$machine" "noncolocated"
+    cd_to_machine "$machine"
+
+    # Create a change
+    make_change "src/main.rs" "fn main() {}" "Initial code"
+    jj new >/dev/null 2>&1
+
+    # Run jj-sync from a subdirectory
+    mkdir -p src/nested
+    cd src/nested
+
+    run_jj_sync "$machine" push
+
+    # Verify bookmark was pushed
+    cd_to_machine "$machine"
+    local count
+    count=$(count_remote_bookmarks "sync/$TEST_USER/$machine/*")
+    [[ "$count" -gt 0 ]]
+}
+
+@test "V25: Doc pull works from a subdirectory" {
+    # Push docs from laptop at repo root
+    cd_to_machine "$MACHINE_LAPTOP"
+    create_doc_dir "ai/docs" 2
+    run_jj_sync_with_docs "$MACHINE_LAPTOP" "ai/docs" push --docs
+
+    # Pull on dev-1 from a subdirectory
+    cd_to_machine "$MACHINE_DEV1"
+    mkdir -p src/nested
+    cd src/nested
+
+    run_jj_sync_with_docs "$MACHINE_DEV1" "ai/docs" pull --docs
+
+    # Verify files extracted at repo root, not subdirectory
+    cd_to_machine "$MACHINE_DEV1"
+    assert_file_exists "ai/docs/doc1.md"
+}
