@@ -140,37 +140,28 @@ create_tree_from_files() {
     local dirs=("$@")
     local temp_index
     temp_index=$(mktemp -u)  # -u: don't create, just generate name
-    # shellcheck disable=SC2064
-    trap "rm -f '$temp_index'" RETURN
 
-    # Use a temporary index file (git will create it fresh)
-    local old_index="${GIT_INDEX_FILE:-}"
-    export GIT_INDEX_FILE="$temp_index"
+    # Run in a subshell so GIT_INDEX_FILE can't leak on failure
+    (
+        # shellcheck disable=SC2064
+        trap "rm -f '$temp_index'" EXIT
+        export GIT_INDEX_FILE="$temp_index"
 
-    # Add all files from each directory
-    local dir
-    for dir in "${dirs[@]}"; do
-        if [[ -d "$dir" ]]; then
-            # Find all files and add them
-            while IFS= read -r -d '' file; do
-                # Add file to index, bypassing .gitignore with -f
-                git_cmd add -f "$file" 2>/dev/null || true
-            done < <(find "$dir" -type f -print0)
-        fi
-    done
+        # Add all files from each directory
+        local dir
+        for dir in "${dirs[@]}"; do
+            if [[ -d "$dir" ]]; then
+                # Find all files and add them
+                while IFS= read -r -d '' file; do
+                    # Add file to index, bypassing .gitignore with -f
+                    git_cmd add -f "$file" 2>/dev/null || true
+                done < <(find "$dir" -type f -print0)
+            fi
+        done
 
-    # Write the tree
-    local tree
-    tree=$(git_cmd write-tree)
-
-    # Restore original index
-    if [[ -n "$old_index" ]]; then
-        export GIT_INDEX_FILE="$old_index"
-    else
-        unset GIT_INDEX_FILE
-    fi
-
-    echo "$tree"
+        # Write the tree
+        git_cmd write-tree
+    )
 }
 
 # Create a commit from a tree
