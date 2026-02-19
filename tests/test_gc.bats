@@ -114,14 +114,24 @@ teardown() {
     make_change "test.txt" "content" "Test change"
     run_jj_sync "$MACHINE_LAPTOP" push
 
+    # Count bookmarks before GC
+    local count_before
+    count_before=$(count_remote_bookmarks "sync/$TEST_USER/*")
+
     # Run GC with high threshold (keep everything)
     run run_jj_sync "$MACHINE_LAPTOP" gc
-    local output1="$output"
+    [[ "$status" -eq 0 ]]
+
+    local count_after_first
+    count_after_first=$(count_remote_bookmarks "sync/$TEST_USER/*")
 
     # Run GC again
     run run_jj_sync "$MACHINE_LAPTOP" gc
-    local output2="$output"
-
-    # Both should succeed
     [[ "$status" -eq 0 ]]
+
+    local count_after_second
+    count_after_second=$(count_remote_bookmarks "sync/$TEST_USER/*")
+
+    # Bookmark count should be the same after both GC runs
+    [[ "$count_after_first" -eq "$count_after_second" ]]
 }

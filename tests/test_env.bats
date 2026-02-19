@@ -366,15 +366,21 @@ teardown() {
     # User B pushes from dev-1
     cd_to_machine "$MACHINE_DEV1"
     make_change "test2.txt" "bob content" "Bob change"
+    local bob_change
+    bob_change=$(get_current_change_id)
     JJ_SYNC_USER="bob@example.com" run_jj_sync "$MACHINE_DEV1" push
 
-    # Pull as alice on dev-1 — should only get alice's refs
-    cd_to_machine "$MACHINE_DEV1"
-    JJ_SYNC_USER="alice@example.com" run_jj_sync "$MACHINE_DEV1" pull
+    # Pull as alice on a third machine — should only get alice's refs
+    local machine="dev-2"
+    create_jj_repo "$machine" "colocated"
+    cd_to_machine "$machine"
+    JJ_SYNC_USER="alice@example.com" run_jj_sync "$machine" pull
 
     # Alice's change should be visible
-    cd_to_machine "$MACHINE_DEV1"
     jj_has_change "$alice_change"
+
+    # Bob's change should NOT be visible
+    ! jj_has_change "$bob_change"
 }
 
 @test "V22: Push works from a subdirectory (colocated)" {

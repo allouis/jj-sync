@@ -83,37 +83,33 @@ teardown() {
     [[ "$status" -eq 0 ]]
 }
 
-@test "R5: Push replaces stale bookmarks on different machine" {
-    # Push from laptop
+@test "R5: Push removes stale bookmarks for abandoned changes" {
     cd_to_machine "$MACHINE_LAPTOP"
-    make_change "test1.txt" "first change" "First change"
-    run_jj_sync "$MACHINE_LAPTOP" push
 
-    # Should have 1 bookmark from laptop
-    local laptop_count
-    laptop_count=$(count_remote_bookmarks "sync/$TEST_USER/$MACHINE_LAPTOP/revs/*")
-    [[ "$laptop_count" -eq 1 ]]
-
-    # Push from dev-1 (different changes)
-    cd_to_machine "$MACHINE_DEV1"
-    make_change "test2.txt" "dev change" "Dev change"
-    run_jj_sync "$MACHINE_DEV1" push
-
-    # Should have 1 bookmark from each machine
-    laptop_count=$(count_remote_bookmarks "sync/$TEST_USER/$MACHINE_LAPTOP/revs/*")
-    local dev_count
-    dev_count=$(count_remote_bookmarks "sync/$TEST_USER/$MACHINE_DEV1/revs/*")
-    [[ "$laptop_count" -eq 1 ]]
-    [[ "$dev_count" -eq 1 ]]
-
-    # Push again from laptop with a different change
-    # (simulating the user having made new changes)
-    cd_to_machine "$MACHINE_LAPTOP"
+    # Create two changes
+    make_change "test1.txt" "first change" "Change to abandon"
+    local abandon_change
+    abandon_change=$(get_current_change_id)
     jj new >/dev/null 2>&1
-    make_change "test3.txt" "another change" "Another change"
+    make_change "test2.txt" "second change" "Change to keep"
+    jj new >/dev/null 2>&1
+
+    # Push both
     run_jj_sync "$MACHINE_LAPTOP" push
 
-    # Laptop should now have 2 bookmarks (the pushed changes accumulate)
-    laptop_count=$(count_remote_bookmarks "sync/$TEST_USER/$MACHINE_LAPTOP/revs/*")
-    [[ "$laptop_count" -eq 2 ]]
+    # Should have 2 bookmarks
+    local count_before
+    count_before=$(count_remote_bookmarks "sync/$TEST_USER/$MACHINE_LAPTOP/revs/*")
+    [[ "$count_before" -eq 2 ]]
+
+    # Abandon one change
+    jj abandon "$abandon_change" >/dev/null 2>&1
+
+    # Push again — stale bookmark for abandoned change should be removed
+    run_jj_sync "$MACHINE_LAPTOP" push
+
+    # Should now have 1 bookmark (the kept change)
+    local count_after
+    count_after=$(count_remote_bookmarks "sync/$TEST_USER/$MACHINE_LAPTOP/revs/*")
+    [[ "$count_after" -eq 1 ]]
 }
