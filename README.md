@@ -201,9 +201,70 @@ git ls-remote <remote> 'refs/jj-sync/*'
 
 ## Requirements
 
-- git ≥ 2.38
-- jj (jujutsu) — only required for revision sync
-- bash ≥ 4.0
+- **bash ≥ 4.0** — uses associative arrays. macOS ships bash 3.2; install a
+  newer version via Homebrew (`brew install bash`) or use the Nix flake.
+- **git ≥ 2.38** — uses `git merge-tree --write-tree` for doc merging.
+- **jj (jujutsu)** — only required for revision sync, not for doc sync.
+
+## Limitations
+
+- **Revision sync is last-write-wins per change.** If you amend the same change
+  on two machines and push from both, the second push overwrites the first.
+  There's no merge or conflict detection for revisions — each change ID maps to
+  exactly one commit SHA on the remote.
+
+- **Doc sync merges on pull, not push.** Each machine maintains its own linear
+  chain of doc commits. Merging happens when pulling on a machine that sees
+  multiple sources. Conflicts produce standard git conflict markers in the
+  affected files.
+
+- **No partial sync.** Push and pull operate on all WIP changes or all doc
+  directories at once. You can't sync a subset.
+
+- **Spaces in doc directory names are not supported.** `JJ_SYNC_DOCS` is
+  space-separated, so directory names containing spaces won't be parsed
+  correctly.
+
+## Troubleshooting
+
+**See what jj-sync knows about:**
+
+```bash
+jj-sync status           # shows revisions, docs, config
+jj-sync status --verbose # includes ref details
+```
+
+**Inspect raw refs on the remote:**
+
+```bash
+git ls-remote <remote> 'refs/jj-sync/*'
+```
+
+**Nothing to push — but I have changes:**
+
+jj-sync uses the revset `mine() & ~empty() & ~immutable_heads() & ~trunk()`.
+Your changes might be excluded because they're empty, immutable (already pushed
+to a branch), on trunk, or authored by a different email than your current
+`user.email` config.
+
+**Push fails with "Failed to push bookmark":**
+
+Check that the remote is reachable and you have write access. Use `--verbose` to
+see the exact git commands being run.
+
+**Docs are missing after pull:**
+
+Verify `JJ_SYNC_DOCS` is set to the same directory names on both machines. The
+directories must match exactly — `ai/docs` and `./ai/docs` are different.
+
+**Full reset:**
+
+```bash
+jj-sync clean --force  # removes all refs/jj-sync/ state for current user
+```
+
+This deletes all sync bookmarks from both the local repo and the remote. You can
+push again immediately after.
 
 ## License
 
