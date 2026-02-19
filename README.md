@@ -37,12 +37,21 @@ cd jj-sync
 
 ## Quick Start
 
+jj-sync uses an existing git remote — no extra server required. If your repo
+has exactly one remote, it's auto-detected. Otherwise, set `JJ_SYNC_REMOTE`:
+
 ```bash
-# Push your WIP changes (remote auto-detected if repo has one remote)
+# If your repo has multiple remotes, tell jj-sync which one to use
+export JJ_SYNC_REMOTE="origin"
+
+# Push your WIP changes
 jj-sync push
 
 # On another machine, pull them
 jj-sync pull
+
+# See what would be synced
+jj-sync status
 ```
 
 ## Usage
@@ -101,6 +110,94 @@ Doc sync works in any git repository — jj is not required. This is useful for
 syncing gitignored directories in projects that don't use jj.
 
 Revision sync still requires jj.
+
+## How It Works
+
+jj-sync stores all sync state in git refs under a `refs/jj-sync/` namespace on
+the remote. It never touches your branches, bookmarks, or working tree (except
+for doc extraction). This makes it safe to use alongside normal git/jj workflows.
+
+### Ref Namespace
+
+All refs follow the pattern:
+
+```
+refs/jj-sync/sync/<user>/<machine>/revs/<change-id>   # revision bookmarks
+refs/jj-sync/sync/<user>/<machine>/docs                # doc commit chain
+```
+
+- **User** — defaults to your `jj`/`git` `user.email`, namespaces refs so
+  multiple people sharing a remote don't clobber each other.
+- **Machine** — defaults to your hostname, lets you sync between your own
+  machines while keeping their states separate.
+
+### Revision Sync
+
+On **push**, jj-sync evaluates the revset:
+
+```
+mine() & ~empty() & ~immutable_heads() & ~trunk()
+```
+
+This selects your WIP changes — authored by you, non-empty, not yet pushed to a
+public branch, and not on trunk. For each matching change, it pushes the commit
+SHA directly via `git push` to `refs/jj-sync/...`. Stale bookmarks (for
+abandoned or squashed changes) are deleted automatically.
+
+On **pull**, jj-sync fetches all `refs/jj-sync/.../revs/*` refs for the current
+user, creates temporary local refs so jj can see the commits, runs `jj git
+import`, then cleans up the temporary refs. The commits appear in your jj log
+as normal revisions.
+
+Revisions are pushed with force (`+` prefix) so amended changes are always
+updated, even when the commit SHA changes non-fast-forward.
+
+### Doc Sync
+
+Doc sync uses git's object model to store directory snapshots without involving
+jj at all. This is why it works in plain git repos too.
+
+On **push**, jj-sync:
+
+1. Builds a git tree object from the files in your `JJ_SYNC_DOCS` directories
+   using a temporary `GIT_INDEX_FILE` (isolated in a subshell to avoid leaks).
+2. Creates a commit object with that tree, parenting it on the previous doc
+   commit from this machine (building a linear chain).
+3. Force-pushes the commit to `refs/jj-sync/.../docs`.
+
+On **pull**, jj-sync:
+
+1. Fetches all doc refs for the current user (from all machines).
+2. If there's a single source, uses it directly.
+3. If there are multiple sources (multiple machines pushed docs), merges them:
+   - With a common ancestor: three-way merge via `git merge-tree`.
+   - Without a common ancestor: union merge (combines both trees).
+   - Conflicts are included in files with standard conflict markers.
+4. Extracts the final tree to a **staging directory** first, then replaces
+   existing files only after extraction succeeds — protecting against data loss
+   if extraction fails.
+
+### Garbage Collection
+
+`jj-sync gc` cleans up stale state on the remote:
+
+- **Revision bookmarks** older than `JJ_SYNC_GC_REVS_DAYS` (default: 7) are
+  deleted. Recent bookmarks are kept.
+- **Doc commit chains** longer than `JJ_SYNC_GC_DOCS_MAX_CHAIN` (default: 50)
+  are squashed to a single commit preserving the latest content. This prevents
+  unbounded growth in the remote.
+
+### Escape Hatch
+
+If sync state gets corrupted, `jj-sync clean` removes all `refs/jj-sync/` refs
+for the current user from both the local repo and the remote. This is a full
+reset — you can push again immediately after.
+
+You can also inspect the raw refs with:
+
+```bash
+git ls-remote <remote> 'refs/jj-sync/*'
+```
 
 ## Requirements
 
