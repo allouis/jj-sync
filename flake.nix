@@ -31,14 +31,10 @@
           ];
 
           installPhase = ''
-            mkdir -p $out/bin $out/share/jj-sync
+            mkdir -p $out/bin
 
-            # Install library files
-            cp -r lib/*.sh $out/share/jj-sync/
-
-            # Install main script with correct paths
-            sed "s|^SCRIPT_DIR=.*|LIBDIR=\"$out/share/jj-sync\"|" jj-sync > $out/bin/jj-sync
-            sed -i "s|source \"\$SCRIPT_DIR/lib/|source \"\$LIBDIR/|g" $out/bin/jj-sync
+            # Install the self-contained script
+            cp jj-sync $out/bin/jj-sync
             chmod +x $out/bin/jj-sync
 
             # Wrap with runtime dependencies in PATH
@@ -98,7 +94,7 @@
             echo "  git:        $(git --version)"
             echo ""
             echo "Run 'bats tests/' to run tests"
-            echo "Run 'shellcheck jj-sync lib/*.sh' to lint"
+            echo "Run 'shellcheck jj-sync' to lint"
           '';
         };
       }

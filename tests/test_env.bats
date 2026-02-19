@@ -19,7 +19,7 @@ teardown() {
         unset JJ_SYNC_REMOTE
         unset JJ_SYNC_MACHINE
         unset JJ_SYNC_DOCS
-        source "$PROJECT_ROOT/lib/env.sh"
+        source "$PROJECT_ROOT/jj-sync"
         load_env
 
         # Remote should be empty (auto-detected later)
@@ -35,7 +35,7 @@ teardown() {
 
     (
         unset JJ_SYNC_MACHINE
-        source "$PROJECT_ROOT/lib/env.sh"
+        source "$PROJECT_ROOT/jj-sync"
         load_env
 
         # Machine name should be non-empty (derived from hostname)
@@ -50,7 +50,7 @@ teardown() {
 
     (
         export JJ_SYNC_REMOTE="other-remote"
-        source "$PROJECT_ROOT/lib/env.sh"
+        source "$PROJECT_ROOT/jj-sync"
         load_env
 
         [[ "$JJ_SYNC_REMOTE" == "other-remote" ]]
@@ -62,7 +62,7 @@ teardown() {
 
     (
         export JJ_SYNC_MACHINE="my-custom-machine"
-        source "$PROJECT_ROOT/lib/env.sh"
+        source "$PROJECT_ROOT/jj-sync"
         load_env
 
         [[ "$JJ_SYNC_MACHINE" == "my-custom-machine" ]]
@@ -102,7 +102,7 @@ teardown() {
 
     (
         export JJ_SYNC_DOCS="dir1 dir2 dir3"
-        source "$PROJECT_ROOT/lib/env.sh"
+        source "$PROJECT_ROOT/jj-sync"
         load_env
 
         local dirs=()
@@ -228,7 +228,7 @@ teardown() {
 
     (
         export JJ_SYNC_USER="custom@user.com"
-        source "$PROJECT_ROOT/lib/env.sh"
+        source "$PROJECT_ROOT/jj-sync"
         load_env
 
         [[ "$JJ_SYNC_USER" == "custom@user.com" ]]

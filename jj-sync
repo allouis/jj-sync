@@ -1,16 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Determine script directory for sourcing lib files
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-# Source library files
-source "$SCRIPT_DIR/lib/env.sh"
-source "$SCRIPT_DIR/lib/ui.sh"
-source "$SCRIPT_DIR/lib/git-plumbing.sh"
-source "$SCRIPT_DIR/lib/revisions.sh"
-source "$SCRIPT_DIR/lib/docs.sh"
-source "$SCRIPT_DIR/lib/gc.sh"
+# === Globals ===
 
 # Global flags (set by parse_args)
 DRY_RUN=false
@@ -22,6 +13,1531 @@ SYNC_MODE="revs"  # revs, docs, both
 OPT_REMOTE=""
 OPT_USER=""
 OPT_MACHINE=""
+
+# GIT_DIR is set by detect_git_dir
+GIT_DIR=""
+GIT_WORK_TREE=""
+
+# Configuration values (populated by load_env)
+JJ_SYNC_REMOTE="${JJ_SYNC_REMOTE:-}"
+JJ_SYNC_USER="${JJ_SYNC_USER:-}"
+JJ_SYNC_MACHINE="${JJ_SYNC_MACHINE:-}"
+JJ_SYNC_DOCS="${JJ_SYNC_DOCS:-}"
+JJ_SYNC_GC_REVS_DAYS="${JJ_SYNC_GC_REVS_DAYS:-}"
+JJ_SYNC_GC_DOCS_MAX_CHAIN="${JJ_SYNC_GC_DOCS_MAX_CHAIN:-}"
+
+# Computed values
+JJ_SYNC_PREFIX="sync"
+
+# The revset for changes we want to sync
+# mine() - authored by current user
+# ~empty() - not empty
+# ~immutable_heads() - not immutable (pushed/tagged)
+# ~trunk() - not on trunk/main
+SYNC_REVSET='mine() & ~empty() & ~immutable_heads() & ~trunk()'
+
+# === UI Helpers ===
+
+# Color codes (disabled if NO_COLOR is set or not a terminal)
+if [[ -z "${NO_COLOR:-}" ]] && [[ -t 2 ]]; then
+    _RED=$'\033[0;31m'
+    _YELLOW=$'\033[0;33m'
+    _GREEN=$'\033[0;32m'
+    _CYAN=$'\033[0;36m'
+    _BOLD=$'\033[1m'
+    _RESET=$'\033[0m'
+else
+    _RED=""
+    _YELLOW=""
+    _GREEN=""
+    _CYAN=""
+    _BOLD=""
+    _RESET=""
+fi
+
+# Log an informational message
+log_info() {
+    echo "${_CYAN}${*}${_RESET}"
+}
+
+# Log a success message
+log_success() {
+    echo "${_GREEN}${*}${_RESET}"
+}
+
+# Log a warning message to stderr
+log_warn() {
+    echo "${_YELLOW}Warning:${_RESET} ${*}" >&2
+}
+
+# Log an error message to stderr
+log_error() {
+    echo "${_RED}Error:${_RESET} ${*}" >&2
+}
+
+# Log an error and exit
+die() {
+    log_error "$@"
+    exit 1
+}
+
+# Print a message only if VERBOSE is true
+# Usage: verbose "Running command: $cmd"
+verbose() {
+    if [[ "${VERBOSE:-false}" == "true" ]]; then
+        echo "${_BOLD}▸${_RESET} ${*}" >&2
+    fi
+}
+
+# Run a command, showing it first if VERBOSE is true
+# Usage: run_verbose git push ...
+run_verbose() {
+    verbose "$*"
+    "$@"
+}
+
+# Prompt for yes/no confirmation
+# Returns 0 for yes, 1 for no
+# Respects FORCE flag (auto-yes)
+confirm() {
+    local prompt="${1:-Continue?}"
+
+    if [[ "${FORCE:-false}" == "true" ]]; then
+        return 0
+    fi
+
+    # If not a terminal, default to no
+    if [[ ! -t 0 ]]; then
+        return 1
+    fi
+
+    local response
+    read -r -p "${prompt} [y/N] " response
+    case "$response" in
+        [yY][eE][sS]|[yY])
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+# Print a section header
+section() {
+    echo ""
+    echo "${_BOLD}${*}${_RESET}"
+    echo ""
+}
+
+# Print a list item
+list_item() {
+    echo "  • ${*}"
+}
+
+# Print a key-value pair
+kv() {
+    local key="$1"
+    local value="$2"
+    printf "  ${_BOLD}%-20s${_RESET} %s\n" "$key:" "$value"
+}
+
+# Show a simple spinner while a command runs (for long operations)
+# Usage: with_spinner "Pushing..." git push
+with_spinner() {
+    local message="$1"
+    shift
+
+    # If not a terminal or verbose mode, just run the command
+    if [[ ! -t 2 ]] || [[ "${VERBOSE:-false}" == "true" ]]; then
+        verbose "$*"
+        "$@"
+        return $?
+    fi
+
+    # Show message
+    printf "%s " "$message" >&2
+
+    # Run command in background
+    "$@" &
+    local pid=$!
+
+    # Spinner characters
+    local spin='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+    local i=0
+
+    while kill -0 "$pid" 2>/dev/null; do
+        printf "\r%s %s" "$message" "${spin:i++%${#spin}:1}" >&2
+        sleep 0.1
+    done
+
+    # Get exit status
+    wait "$pid"
+    local status=$?
+
+    # Clear spinner
+    printf "\r%s   \r" "$message" >&2
+
+    if [[ $status -eq 0 ]]; then
+        printf "%s ${_GREEN}✓${_RESET}\n" "$message" >&2
+    else
+        printf "%s ${_RED}✗${_RESET}\n" "$message" >&2
+    fi
+
+    return $status
+}
+
+# Check if we're in dry-run mode
+is_dry_run() {
+    [[ "${DRY_RUN:-false}" == "true" ]]
+}
+
+# Run a command, or just print it if dry-run
+# Usage: maybe_run git push ...
+maybe_run() {
+    if is_dry_run; then
+        echo "${_CYAN}[dry-run]${_RESET} $*"
+        return 0
+    fi
+    "$@"
+}
+
+# === Environment ===
+
+# Sanitize a string for use in a git ref name
+# Replaces: spaces, ~ ^ : ? * [ \ control chars
+# Collapses .. sequences, strips leading/trailing dots
+sanitize_for_ref() {
+    local input="$1"
+    local result
+
+    # Replace problematic characters: space ~ ^ : ? * [ \ and control chars
+    result="${input//[[:space:]~^:?*\[\\]/_}"
+
+    # Collapse .. sequences
+    while [[ "$result" == *..* ]]; do
+        result="${result//../.}"
+    done
+
+    # Strip leading/trailing dots
+    result="${result#.}"
+    result="${result%.}"
+
+    echo "$result"
+}
+
+# Load environment variables with defaults
+load_env() {
+    JJ_SYNC_REMOTE="${JJ_SYNC_REMOTE:-}"
+    JJ_SYNC_MACHINE="${JJ_SYNC_MACHINE:-$(hostname)}"
+    JJ_SYNC_DOCS="${JJ_SYNC_DOCS:-}"
+    JJ_SYNC_GC_REVS_DAYS="${JJ_SYNC_GC_REVS_DAYS:-7}"
+    JJ_SYNC_GC_DOCS_MAX_CHAIN="${JJ_SYNC_GC_DOCS_MAX_CHAIN:-50}"
+
+    # Sanitize machine name (remove characters that would be problematic in refs)
+    JJ_SYNC_MACHINE="${JJ_SYNC_MACHINE//[^a-zA-Z0-9_-]/_}"
+
+    # Resolve user identity (don't error if empty — require_user handles that)
+    if [[ -z "${JJ_SYNC_USER:-}" ]]; then
+        JJ_SYNC_USER=$(jj config get user.email 2>/dev/null) || true
+    fi
+    if [[ -z "${JJ_SYNC_USER:-}" ]]; then
+        JJ_SYNC_USER=$(git config user.email 2>/dev/null) || true
+    fi
+
+    # Sanitize user for ref name
+    if [[ -n "$JJ_SYNC_USER" ]]; then
+        JJ_SYNC_USER=$(sanitize_for_ref "$JJ_SYNC_USER")
+    fi
+}
+
+# Require JJ_SYNC_USER to be set (called by commands that need it)
+require_user() {
+    if [[ -z "${JJ_SYNC_USER:-}" ]]; then
+        cat >&2 <<EOF
+Error: Could not determine user identity
+
+Set one of the following:
+  jj config set --user user.email "you@example.com"
+  git config --global user.email "you@example.com"
+  export JJ_SYNC_USER="you@example.com"
+EOF
+        exit 1
+    fi
+}
+
+# Require JJ_SYNC_DOCS to be set (called when --docs or --both is used)
+require_docs_env() {
+    if [[ -z "${JJ_SYNC_DOCS:-}" ]]; then
+        cat >&2 <<EOF
+Error: --docs requires JJ_SYNC_DOCS environment variable
+Hint: export JJ_SYNC_DOCS="ai/docs .claude"
+EOF
+        exit 1
+    fi
+
+    # Validate that it's not just whitespace
+    local trimmed
+    trimmed="${JJ_SYNC_DOCS// /}"
+    if [[ -z "$trimmed" ]]; then
+        cat >&2 <<EOF
+Error: JJ_SYNC_DOCS is empty
+Hint: export JJ_SYNC_DOCS="ai/docs .claude"
+EOF
+        exit 1
+    fi
+}
+
+# Parse JJ_SYNC_DOCS into an array and echo each directory
+# Usage: while IFS= read -r dir; do ... done < <(get_docs_dirs)
+get_docs_dirs() {
+    local dir
+    # shellcheck disable=SC2086
+    for dir in $JJ_SYNC_DOCS; do
+        echo "$dir"
+    done
+}
+
+# Get the bookmark prefix for this machine's revisions
+get_revs_prefix() {
+    echo "${JJ_SYNC_PREFIX}/${JJ_SYNC_USER}/${JJ_SYNC_MACHINE}/revs"
+}
+
+# Get the bookmark name for this machine's docs
+get_docs_bookmark() {
+    echo "${JJ_SYNC_PREFIX}/${JJ_SYNC_USER}/${JJ_SYNC_MACHINE}/docs"
+}
+
+# Get the glob pattern for all machines' revision bookmarks (current user)
+get_all_revs_glob() {
+    echo "${JJ_SYNC_PREFIX}/${JJ_SYNC_USER}/*/revs/*"
+}
+
+# Get the glob pattern for all machines' docs bookmarks (current user)
+get_all_docs_glob() {
+    echo "${JJ_SYNC_PREFIX}/${JJ_SYNC_USER}/*/docs"
+}
+
+# === Git Plumbing ===
+
+# Detect the git directory for the current jj repo
+# Sets GIT_DIR and GIT_WORK_TREE, and cd's to the repo root
+# Works for both colocated (.git/) and non-colocated (.jj/repo/store/git/) repos
+# Works from any subdirectory within the repo
+detect_git_dir() {
+    local repo_root
+
+    # Use git to find the repo root (handles subdirectories)
+    if ! repo_root=$(git rev-parse --show-toplevel 2>/dev/null); then
+        return 1
+    fi
+
+    cd "$repo_root" || return 1
+
+    # Try colocated first
+    if [[ -d "$repo_root/.git" ]]; then
+        GIT_DIR="$repo_root/.git"
+        GIT_WORK_TREE="$repo_root"
+        return 0
+    fi
+
+    # Try non-colocated
+    if [[ -d "$repo_root/.jj/repo/store/git" ]]; then
+        GIT_DIR="$repo_root/.jj/repo/store/git"
+        GIT_WORK_TREE="$repo_root"
+        return 0
+    fi
+
+    return 1
+}
+
+# Run a git command with the correct GIT_DIR
+git_cmd() {
+    GIT_DIR="$GIT_DIR" GIT_WORK_TREE="$GIT_WORK_TREE" git "$@"
+}
+
+# Check that we're in a git repository (does not require jj)
+require_git_repo() {
+    if ! detect_git_dir; then
+        die "Not in a git repository"
+    fi
+}
+
+# Check if the current directory is a jj repository
+# Returns 0 if jj repo, 1 otherwise
+is_jj_repo() {
+    jj root >/dev/null 2>&1
+}
+
+# Check that we're in a jj repository
+require_jj_repo() {
+    require_git_repo
+
+    if ! is_jj_repo; then
+        die "Not in a jj repository (jj root failed)"
+    fi
+}
+
+# List all git remotes
+list_git_remotes() {
+    git_cmd remote
+}
+
+# Resolve which remote to use for syncing
+# Sets JJ_SYNC_REMOTE as a side effect
+# Logic: explicit value > single remote auto-detect > error
+resolve_remote() {
+    # If already set (via env or --remote flag), validate it exists
+    if [[ -n "$JJ_SYNC_REMOTE" ]]; then
+        if ! git_cmd remote get-url "$JJ_SYNC_REMOTE" >/dev/null 2>&1; then
+            cat >&2 <<EOF
+Error: Remote '$JJ_SYNC_REMOTE' not found
+
+Available remotes:
+$(list_git_remotes 2>/dev/null | sed 's/^/  /')
+
+Set a valid remote via --remote or JJ_SYNC_REMOTE.
+EOF
+            exit 1
+        fi
+        return 0
+    fi
+
+    # Auto-detect from available remotes
+    local remotes=()
+    local name
+    while IFS= read -r name; do
+        [[ -n "$name" ]] && remotes+=("$name")
+    done < <(list_git_remotes 2>/dev/null)
+
+    case ${#remotes[@]} in
+        0)
+            cat >&2 <<EOF
+Error: No git remotes configured
+
+Add a remote for jj-sync to push to:
+  jj git remote add origin <your-remote-url>
+EOF
+            exit 1
+            ;;
+        1)
+            JJ_SYNC_REMOTE="${remotes[0]}"
+            ;;
+        *)
+            cat >&2 <<EOF
+Error: Multiple git remotes found — specify which one to use
+
+Available remotes:
+$(printf '  %s\n' "${remotes[@]}")
+
+Set one via --remote <name> or JJ_SYNC_REMOTE=<name>.
+EOF
+            exit 1
+            ;;
+    esac
+}
+
+# Ensure git dir is detected and a valid remote is resolved
+require_remote() {
+    detect_git_dir
+    resolve_remote
+}
+
+# Get the URL of the sync remote
+get_remote_url() {
+    git_cmd remote get-url "$JJ_SYNC_REMOTE"
+}
+
+# Create a tree object from files in specified directories
+# Usage: create_tree_from_files dir1 dir2 ...
+# Outputs: tree SHA
+create_tree_from_files() {
+    local dirs=("$@")
+    local temp_index
+    temp_index=$(mktemp -u)  # -u: don't create, just generate name
+
+    # Run in a subshell so GIT_INDEX_FILE can't leak on failure
+    (
+        # shellcheck disable=SC2064
+        trap "rm -f '$temp_index'" EXIT
+        export GIT_INDEX_FILE="$temp_index"
+
+        # Add all files from each directory
+        local dir
+        for dir in "${dirs[@]}"; do
+            if [[ -d "$dir" ]]; then
+                # Find all files and add them
+                while IFS= read -r -d '' file; do
+                    # Add file to index, bypassing .gitignore with -f
+                    git_cmd add -f "$file" 2>/dev/null || log_warn "Failed to add file: $file"
+                done < <(find "$dir" -type f -print0)
+            fi
+        done
+
+        # Write the tree
+        git_cmd write-tree
+    )
+}
+
+# Create a commit from a tree
+# Usage: create_commit <tree> <message> [parent1] [parent2] ...
+# Outputs: commit SHA
+create_commit() {
+    local tree="$1"
+    local message="$2"
+    shift 2
+
+    local parent_args=()
+    for parent in "$@"; do
+        parent_args+=("-p" "$parent")
+    done
+
+    git_cmd commit-tree "$tree" "${parent_args[@]}" -m "$message"
+}
+
+# Get the timestamp of a commit
+# Usage: get_commit_timestamp <commit>
+# Outputs: Unix timestamp
+get_commit_timestamp() {
+    local commit="$1"
+    git_cmd show -s --format=%ct "$commit"
+}
+
+# Check if a ref exists locally
+# Usage: ref_exists <refname>
+ref_exists_local() {
+    local ref="$1"
+    git_cmd rev-parse --verify "refs/heads/$ref" >/dev/null 2>&1
+}
+
+# Check if a ref exists on the remote
+# Usage: ref_exists_remote <refname>
+ref_exists_remote() {
+    local ref="$1"
+    git_cmd ls-remote --heads "$JJ_SYNC_REMOTE" "$ref" | grep -q .
+}
+
+# List refs on remote matching a pattern
+# Usage: list_remote_refs <pattern>
+# Outputs: one ref per line (without refs/jj-sync/ prefix)
+# Note: We use refs/jj-sync/ namespace to avoid jj importing them as bookmarks
+list_remote_refs() {
+    local pattern="$1"
+    git_cmd ls-remote "$JJ_SYNC_REMOTE" "refs/jj-sync/$pattern" 2>/dev/null |
+        sed 's|.*refs/jj-sync/||'
+}
+
+# Fetch refs from remote
+# Usage: fetch_remote [refspec...]
+# shellcheck disable=SC2120
+fetch_remote() {
+    if [[ $# -eq 0 ]]; then
+        git_cmd fetch "$JJ_SYNC_REMOTE"
+    else
+        git_cmd fetch "$JJ_SYNC_REMOTE" "$@"
+    fi
+}
+
+# Push refs to remote
+# Usage: push_remote [--force] <refspec>...
+push_remote() {
+    local force=""
+    if [[ "${1:-}" == "--force" ]]; then
+        force="--force"
+        shift
+    fi
+
+    # shellcheck disable=SC2086
+    git_cmd push $force "$JJ_SYNC_REMOTE" "$@"
+}
+
+# Delete a ref on the remote
+# Usage: delete_remote_ref <refname>
+delete_remote_ref() {
+    local ref="$1"
+    git_cmd push "$JJ_SYNC_REMOTE" ":refs/jj-sync/$ref" 2>/dev/null || true
+}
+
+# Get a commit from a remote ref (fetches if needed)
+# Usage: get_remote_commit <refname>
+# Outputs: commit SHA or empty if not found
+get_remote_commit() {
+    local ref="$1"
+
+    # First try to get directly from remote
+    local commit
+    commit=$(git_cmd ls-remote "$JJ_SYNC_REMOTE" "refs/jj-sync/$ref" 2>/dev/null | cut -f1)
+
+    if [[ -n "$commit" ]]; then
+        # Fetch the commit object
+        git_cmd fetch "$JJ_SYNC_REMOTE" "$commit" 2>/dev/null || log_warn "Failed to fetch commit object $commit"
+        echo "$commit"
+        return 0
+    fi
+
+    return 1
+}
+
+# Update a local ref to point to a commit
+# Usage: update_ref <refname> <commit>
+update_ref() {
+    local ref="$1"
+    local commit="$2"
+    git_cmd update-ref "refs/heads/$ref" "$commit"
+}
+
+# Delete a local ref
+# Usage: delete_local_ref <refname>
+delete_local_ref() {
+    local ref="$1"
+    git_cmd update-ref -d "refs/heads/$ref" 2>/dev/null || true
+}
+
+# Extract files from a tree to the working directory
+# Usage: extract_tree <tree-ish> <prefix>
+# Extracts files from tree to current directory, preserving paths under prefix
+extract_tree() {
+    local tree="$1"
+    local prefix="${2:-.}"
+
+    # Use git archive to extract
+    git_cmd archive "$tree" | tar -x -C "$prefix"
+}
+
+# Three-way merge of trees using git merge-tree
+# Usage: merge_trees <base> <ours> <theirs>
+# Outputs: merged tree SHA
+# Returns: 0 if clean merge, 1 if conflicts
+merge_trees() {
+    local base="$1"
+    local ours="$2"
+    local theirs="$3"
+
+    local result
+    result=$(git_cmd merge-tree --write-tree "$base" "$ours" "$theirs" 2>&1)
+    local status=$?
+
+    if [[ $status -eq 0 ]]; then
+        echo "$result"
+        return 0
+    else
+        # First line is the tree with conflicts
+        echo "$result" | head -1
+        return 1
+    fi
+}
+
+# Find common ancestor of two commits
+# Usage: find_merge_base <commit1> <commit2>
+# Outputs: common ancestor SHA or empty if none
+find_merge_base() {
+    local commit1="$1"
+    local commit2="$2"
+    git_cmd merge-base "$commit1" "$commit2" 2>/dev/null || true
+}
+
+# === Revision Sync ===
+
+# Push WIP revisions to the sync remote
+push_revisions() {
+    log_info "Pushing revisions..."
+
+    local revs_prefix
+    revs_prefix=$(get_revs_prefix)
+
+    # Get list of changes to sync
+    local changes=()
+    local change_id
+    while IFS= read -r change_id; do
+        [[ -n "$change_id" ]] && changes+=("$change_id")
+    done < <(jj log -r "$SYNC_REVSET" --no-graph -T 'change_id.short(12) ++ "\n"' 2>/dev/null)
+
+    local change_count=${#changes[@]}
+
+    if [[ $change_count -eq 0 ]]; then
+        log_info "No WIP revisions to push"
+        return 0
+    fi
+
+    verbose "Found $change_count changes to sync"
+
+    # Prepare bookmark names (don't actually create jj bookmarks - we push directly)
+    local bookmarks_to_push=()
+    for change_id in "${changes[@]}"; do
+        local bookmark_name="$revs_prefix/$change_id"
+        bookmarks_to_push+=("$bookmark_name")
+    done
+
+    # Get list of current bookmarks on remote for this machine
+    local remote_bookmarks=()
+    local ref
+    while IFS= read -r ref; do
+        [[ -n "$ref" ]] && remote_bookmarks+=("$ref")
+    done < <(list_remote_refs "$revs_prefix/*")
+
+    # Find stale bookmarks (on remote but not in current set)
+    local stale_bookmarks=()
+    for ref in "${remote_bookmarks[@]}"; do
+        local is_current=false
+        for bookmark in "${bookmarks_to_push[@]}"; do
+            if [[ "$ref" == "$bookmark" ]]; then
+                is_current=true
+                break
+            fi
+        done
+        if [[ "$is_current" == "false" ]]; then
+            stale_bookmarks+=("$ref")
+        fi
+    done
+
+    # Delete stale bookmarks from remote
+    if [[ ${#stale_bookmarks[@]} -gt 0 ]]; then
+        verbose "Deleting ${#stale_bookmarks[@]} stale bookmarks from remote"
+        for ref in "${stale_bookmarks[@]}"; do
+            verbose "Deleting remote: $ref"
+            if ! is_dry_run; then
+                delete_remote_ref "$ref"
+            fi
+        done
+    fi
+
+    # Push all bookmarks
+    if [[ ${#bookmarks_to_push[@]} -gt 0 ]]; then
+        verbose "Pushing ${#bookmarks_to_push[@]} bookmarks to remote"
+
+        if ! is_dry_run; then
+            # Get commit SHAs for each change and push directly via git
+            # Push to refs/jj-sync/ namespace to avoid jj importing them as bookmarks
+            # (which would make commits immutable)
+            for bookmark in "${bookmarks_to_push[@]}"; do
+                # Extract change_id from bookmark name
+                local change_id="${bookmark##*/}"
+
+                # Get the commit SHA for this change
+                local commit_sha
+                commit_sha=$(jj log -r "$change_id" --no-graph -T 'commit_id' 2>/dev/null) || continue
+
+                verbose "Pushing: $bookmark ($commit_sha)"
+                git_cmd push "$JJ_SYNC_REMOTE" "$commit_sha:refs/jj-sync/$bookmark" 2>/dev/null || {
+                    log_warn "Failed to push bookmark: $bookmark"
+                }
+            done
+        fi
+    fi
+
+    log_success "Pushed $change_count revision(s)"
+}
+
+# Pull WIP revisions from the sync remote
+pull_revisions() {
+    log_info "Pulling revisions..."
+
+    detect_git_dir
+
+    # Get the glob pattern for all machines' revision bookmarks
+    local all_revs_glob
+    all_revs_glob=$(get_all_revs_glob)
+
+    # List all sync refs on remote
+    local remote_refs=()
+    local ref
+    while IFS= read -r ref; do
+        [[ -n "$ref" ]] && remote_refs+=("$ref")
+    done < <(list_remote_refs "$all_revs_glob")
+
+    if [[ ${#remote_refs[@]} -eq 0 ]]; then
+        log_info "No revisions found on remote"
+        return 0
+    fi
+
+    if is_dry_run; then
+        log_info "[dry-run] Would fetch ${#remote_refs[@]} revision(s)"
+        return 0
+    fi
+
+    # Fetch each ref and create temporary local bookmark refs so jj can see them
+    verbose "Fetching commits from $JJ_SYNC_REMOTE"
+    local temp_bookmarks=()
+    for ref in "${remote_refs[@]}"; do
+        local commit
+        commit=$(git_cmd ls-remote "$JJ_SYNC_REMOTE" "refs/jj-sync/$ref" 2>/dev/null | cut -f1)
+        if [[ -n "$commit" ]]; then
+            verbose "Fetching: $ref ($commit)"
+            # Create a temporary local branch so jj git import can see the commit
+            local temp_bookmark="jj-sync-import/${ref//\//-}"
+            git_cmd fetch "$JJ_SYNC_REMOTE" "$commit:refs/heads/$temp_bookmark" 2>/dev/null || {
+                log_warn "Failed to fetch commit $commit for $ref"
+                continue
+            }
+            temp_bookmarks+=("$temp_bookmark")
+        fi
+    done
+
+    # Import the fetched commits into jj (jj sees refs/heads/* as bookmarks)
+    if ! jj git import --quiet 2>/dev/null; then
+        die "Failed to import fetched commits into jj"
+    fi
+
+    # Clean up temporary bookmarks (jj has already seen the commits)
+    for temp_bookmark in "${temp_bookmarks[@]}"; do
+        jj bookmark delete "$temp_bookmark" --quiet 2>/dev/null || true
+    done
+    jj git export --quiet 2>/dev/null || true
+
+    # Group by machine for display
+    # Ref format: sync/<user>/<machine>/revs/<change_id>
+    declare -A machine_counts
+    for ref in "${remote_refs[@]}"; do
+        local machine
+        machine=$(echo "$ref" | cut -d'/' -f3)
+        machine_counts[$machine]=$(( ${machine_counts[$machine]:-0} + 1 ))
+    done
+
+    # Display summary
+    log_info "Found revisions from ${#machine_counts[@]} machine(s):"
+    for machine in "${!machine_counts[@]}"; do
+        list_item "$machine: ${machine_counts[$machine]} revision(s)"
+    done
+
+    log_success "Pulled revisions from ${#machine_counts[@]} machine(s)"
+}
+
+# List WIP revisions that would be synced
+list_sync_revisions() {
+    jj log -r "$SYNC_REVSET" --no-graph -T 'change_id.short(12) ++ " " ++ commit_id.short(8) ++ "  " ++ if(description, description.first_line(), "(no description)") ++ "\n"' 2>/dev/null
+}
+
+# Count WIP revisions
+count_sync_revisions() {
+    jj log -r "$SYNC_REVSET" --no-graph -T 'change_id.short(12) ++ "\n"' 2>/dev/null | grep -c . || true
+}
+
+# === Doc Sync ===
+
+# Union merge two trees (when there's no common ancestor)
+# Combines both trees (tree2 wins on conflicts)
+# Usage: union_merge_trees <tree1> <tree2>
+# Outputs: merged tree SHA
+union_merge_trees() {
+    local tree1="$1"
+    local tree2="$2"
+
+    verbose "union_merge_trees: tree1=$tree1 tree2=$tree2"
+
+    # Use a temporary index for the merge
+    # Note: We use git directly (not git_cmd) because git_cmd doesn't preserve GIT_INDEX_FILE
+    local temp_index
+    temp_index=$(mktemp)
+
+    # Helper to run git with the temp index
+    _git_with_index() {
+        GIT_DIR="$GIT_DIR" GIT_INDEX_FILE="$temp_index" git "$@"
+    }
+
+    # Clear the index first
+    _git_with_index read-tree --empty 2>/dev/null || true
+
+    # Add all entries from tree1
+    local count1=0
+    while IFS=$'\t' read -r mode_type_sha path; do
+        [[ -z "$path" ]] && continue
+        local mode _type sha
+        read -r mode _type sha <<< "$mode_type_sha"
+        verbose "  Adding from tree1: $path"
+        _git_with_index update-index --add --cacheinfo "$mode,$sha,$path" 2>/dev/null || true
+        ((count1++)) || true
+    done < <(git_cmd ls-tree -r "$tree1" 2>/dev/null)
+    verbose "  tree1 had $count1 entries"
+
+    # Add all entries from tree2 (overwrites tree1 entries on conflict)
+    local count2=0
+    while IFS=$'\t' read -r mode_type_sha path; do
+        [[ -z "$path" ]] && continue
+        local mode _type sha
+        read -r mode _type sha <<< "$mode_type_sha"
+        verbose "  Adding from tree2: $path"
+        _git_with_index update-index --add --cacheinfo "$mode,$sha,$path" 2>/dev/null || true
+        ((count2++)) || true
+    done < <(git_cmd ls-tree -r "$tree2" 2>/dev/null)
+    verbose "  tree2 had $count2 entries"
+
+    # Write the combined tree
+    local merged_tree
+    merged_tree=$(_git_with_index write-tree 2>/dev/null)
+    verbose "  merged_tree=$merged_tree"
+
+    # Debug: show merged tree contents
+    local merged_count
+    merged_count=$(git_cmd ls-tree -r "$merged_tree" 2>/dev/null | wc -l | tr -d ' ')
+    verbose "  merged tree has $merged_count entries"
+
+    # Cleanup
+    rm -f "$temp_index"
+
+    echo "$merged_tree"
+}
+
+# Push gitignored docs to the sync remote
+push_docs() {
+    log_info "Pushing docs..."
+
+    # Get docs directories
+    local docs_dirs=()
+    local dir
+    while IFS= read -r dir; do
+        [[ -n "$dir" ]] && docs_dirs+=("$dir")
+    done < <(get_docs_dirs)
+
+    if [[ ${#docs_dirs[@]} -eq 0 ]]; then
+        log_warn "No doc directories configured"
+        return 0
+    fi
+
+    # Check which directories exist and have files
+    local valid_dirs=()
+    local total_files=0
+    for dir in "${docs_dirs[@]}"; do
+        if [[ -d "$dir" ]]; then
+            local count
+            count=$(find "$dir" -type f 2>/dev/null | wc -l | tr -d ' ')
+            if [[ "$count" -gt 0 ]]; then
+                valid_dirs+=("$dir")
+                total_files=$((total_files + count))
+                verbose "Found $count files in $dir"
+            else
+                verbose "Directory $dir is empty, skipping"
+            fi
+        else
+            log_warn "Doc directory not found: $dir"
+        fi
+    done
+
+    if [[ ${#valid_dirs[@]} -eq 0 ]]; then
+        log_info "No doc files to push"
+        return 0
+    fi
+
+    verbose "Total: $total_files files in ${#valid_dirs[@]} directories"
+
+    if is_dry_run; then
+        log_info "[dry-run] Would push $total_files files from: ${valid_dirs[*]}"
+        return 0
+    fi
+
+    # Ensure git dir is detected
+    detect_git_dir
+
+    # Get the docs bookmark name
+    local docs_bookmark
+    docs_bookmark=$(get_docs_bookmark)
+
+    # Fetch from remote to see latest state
+    fetch_remote 2>/dev/null || log_warn "Failed to fetch from remote (will create orphan commit)"
+
+    # Try to get OUR OWN previous docs commit (for parent chain)
+    # Each machine maintains its own independent doc chain - merge happens on pull
+    # Do NOT use other machines' docs as parent (that creates false ancestry)
+    local parent_commit=""
+    if parent_commit=$(get_remote_commit "$docs_bookmark" 2>/dev/null); then
+        verbose "Found previous docs commit: $parent_commit"
+    else
+        verbose "No previous docs commit found (first push)"
+    fi
+
+    # Create tree from local doc files
+    # Each machine pushes its own current state - merge happens on pull
+    verbose "Creating tree from local doc files"
+    local tree
+    tree=$(create_tree_from_files "${valid_dirs[@]}")
+
+    if [[ -z "$tree" ]]; then
+        die "Failed to create tree from doc files"
+    fi
+    verbose "Created tree: $tree"
+
+    # Create the docs commit
+    local timestamp
+    timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+    local message="jj-sync docs $timestamp"
+
+    local commit
+    if [[ -n "$parent_commit" ]]; then
+        commit=$(create_commit "$tree" "$message" "$parent_commit")
+    else
+        commit=$(create_commit "$tree" "$message")
+    fi
+
+    if [[ -z "$commit" ]]; then
+        die "Failed to create docs commit"
+    fi
+    verbose "Created commit: $commit"
+
+    # Push to remote using refs/jj-sync/ namespace (force push since we may replace the parent chain)
+    verbose "Pushing docs to remote"
+    if ! git_cmd push --force "$JJ_SYNC_REMOTE" "$commit:refs/jj-sync/$docs_bookmark" 2>/dev/null; then
+        die "Failed to push docs"
+    fi
+
+    log_success "Pushed $total_files doc file(s)"
+}
+
+# Pull gitignored docs from the sync remote
+pull_docs() {
+    log_info "Pulling docs..."
+
+    # Ensure git dir is detected
+    detect_git_dir
+
+    # Fetch from remote first
+    verbose "Fetching from $JJ_SYNC_REMOTE"
+    if ! is_dry_run; then
+        fetch_remote 2>/dev/null || log_warn "Failed to fetch from remote (may show stale state)"
+    fi
+
+    # Get the glob pattern for all machines' docs bookmarks
+    local all_docs_glob
+    all_docs_glob=$(get_all_docs_glob)
+
+    # List all docs bookmarks and get their commits
+    local docs_refs=()
+    local docs_commits=()
+    local ref
+    while IFS= read -r ref; do
+        if [[ -n "$ref" ]]; then
+            local commit
+            commit=$(get_remote_commit "$ref" 2>/dev/null) || continue
+            docs_refs+=("$ref")
+            docs_commits+=("$commit")
+        fi
+    done < <(list_remote_refs "$all_docs_glob")
+
+    if [[ ${#docs_refs[@]} -eq 0 ]]; then
+        log_info "No docs found on remote"
+        return 0
+    fi
+
+    verbose "Found ${#docs_refs[@]} docs bookmark(s): ${docs_refs[*]}"
+
+    if is_dry_run; then
+        log_info "[dry-run] Would pull docs from: ${docs_refs[*]}"
+        return 0
+    fi
+
+    local final_commit
+    local had_conflicts=false
+
+    if [[ ${#docs_commits[@]} -eq 1 ]]; then
+        # Single source - just use it directly
+        final_commit="${docs_commits[0]}"
+        verbose "Single docs source: ${docs_refs[0]}"
+    else
+        # Multiple sources - need to merge
+        log_info "Merging docs from ${#docs_commits[@]} machines..."
+
+        # Start with the first commit
+        final_commit="${docs_commits[0]}"
+        verbose "Starting merge with: ${docs_refs[0]}"
+
+        # Merge in each subsequent commit
+        for ((i=1; i<${#docs_commits[@]}; i++)); do
+            local other_commit="${docs_commits[$i]}"
+            local other_ref="${docs_refs[$i]}"
+
+            verbose "Merging: $other_ref"
+
+            # Find common ancestor
+            local base
+            base=$(find_merge_base "$final_commit" "$other_commit")
+
+            local merged_tree
+            if [[ -z "$base" ]]; then
+                # No common ancestor - do a union merge by combining both trees
+                verbose "No common ancestor with $other_ref, performing union merge"
+
+                local tree_ours tree_theirs
+                tree_ours=$(git_cmd rev-parse "$final_commit^{tree}" 2>/dev/null)
+                tree_theirs=$(git_cmd rev-parse "$other_commit^{tree}" 2>/dev/null)
+
+                merged_tree=$(union_merge_trees "$tree_ours" "$tree_theirs")
+            else
+                # Have common ancestor - use proper three-way merge
+                # git merge-tree --write-tree takes just 2 commits and finds base automatically
+                local merge_output
+                if merge_output=$(git_cmd merge-tree --write-tree "$final_commit" "$other_commit" 2>&1); then
+                    merged_tree="$merge_output"
+                    verbose "Clean merge with $other_ref"
+                else
+                    # Conflicts - first line is tree SHA
+                    merged_tree=$(echo "$merge_output" | head -1)
+                    log_warn "Conflicts detected merging $other_ref"
+                    had_conflicts=true
+                fi
+            fi
+
+            # Create merge commit with both parents
+            local timestamp
+            timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+            local message="jj-sync docs merge $timestamp"
+            final_commit=$(create_commit "$merged_tree" "$message" "$final_commit" "$other_commit")
+        done
+    fi
+
+    # Get list of files in the tree
+    local tree_files
+    tree_files=$(git_cmd ls-tree -r --name-only "$final_commit" 2>/dev/null)
+
+    # Get the doc directories from the tree (top-level dirs)
+    local doc_dirs=()
+    local seen_dirs=""
+    local file
+    while IFS= read -r file; do
+        local top_dir
+        top_dir=$(echo "$file" | cut -d'/' -f1)
+        if [[ ! "$seen_dirs" =~ (^|:)"$top_dir"(:|$) ]]; then
+            doc_dirs+=("$top_dir")
+            seen_dirs="${seen_dirs}:${top_dir}"
+        fi
+    done <<< "$tree_files"
+
+    # Extract to a staging directory first to avoid data loss if extraction fails
+    local staging_dir
+    staging_dir=$(mktemp -d)
+    # shellcheck disable=SC2064
+    trap "rm -rf '$staging_dir'" RETURN
+
+    verbose "Extracting docs to staging directory"
+    if ! extract_tree "$final_commit" "$staging_dir"; then
+        die "Failed to extract docs — existing files left untouched"
+    fi
+
+    # Extraction succeeded — now safe to replace old files
+    for dir in "${doc_dirs[@]}"; do
+        if [[ -d "$dir" ]]; then
+            verbose "Cleaning existing files in $dir"
+            find "$dir" -type f -delete 2>/dev/null || log_warn "Failed to delete some files in $dir"
+        fi
+    done
+
+    # Move extracted files into place
+    verbose "Moving extracted docs to working directory"
+    for dir in "${doc_dirs[@]}"; do
+        if [[ -d "$staging_dir/$dir" ]]; then
+            mkdir -p "$dir"
+            cp -R "$staging_dir/$dir/." "$dir/"
+        fi
+    done
+
+    # If we merged, push the merged state as our new docs
+    if [[ ${#docs_commits[@]} -gt 1 ]]; then
+        local our_docs_bookmark
+        our_docs_bookmark=$(get_docs_bookmark)
+        verbose "Pushing merged docs as $our_docs_bookmark"
+        git_cmd push --force "$JJ_SYNC_REMOTE" "$final_commit:refs/jj-sync/$our_docs_bookmark" 2>/dev/null || true
+    fi
+
+    # Show what was extracted
+    local extracted_files
+    extracted_files=$(git_cmd ls-tree -r --name-only "$final_commit" 2>/dev/null | wc -l | tr -d ' ')
+
+    if [[ "$had_conflicts" == "true" ]]; then
+        log_warn "Pulled $extracted_files doc file(s) with CONFLICTS - check files for conflict markers"
+    else
+        log_success "Pulled $extracted_files doc file(s)"
+    fi
+}
+
+# List doc directories and their file counts
+list_doc_dirs() {
+    local dir
+    while IFS= read -r dir; do
+        if [[ -d "$dir" ]]; then
+            local count
+            count=$(find "$dir" -type f 2>/dev/null | wc -l | tr -d ' ')
+            echo "$dir: $count files"
+        else
+            echo "$dir: (not found)"
+        fi
+    done < <(get_docs_dirs)
+}
+
+# Count total doc files
+count_doc_files() {
+    local total=0
+    local dir
+    while IFS= read -r dir; do
+        if [[ -d "$dir" ]]; then
+            local count
+            count=$(find "$dir" -type f 2>/dev/null | wc -l | tr -d ' ')
+            total=$((total + count))
+        fi
+    done < <(get_docs_dirs)
+    echo "$total"
+}
+
+# === GC / Cleanup ===
+
+# Garbage collect old revision bookmarks
+gc_revisions() {
+    log_info "Cleaning up old revision bookmarks..."
+
+    detect_git_dir
+
+    # Fetch from remote first to get current state
+    fetch_remote 2>/dev/null || log_warn "Failed to fetch from remote (GC may use stale state)"
+
+    local all_revs_glob
+    all_revs_glob=$(get_all_revs_glob)
+
+    # List all revision bookmarks on remote
+    local remote_bookmarks=()
+    local ref
+    while IFS= read -r ref; do
+        [[ -n "$ref" ]] && remote_bookmarks+=("$ref")
+    done < <(list_remote_refs "$all_revs_glob")
+
+    if [[ ${#remote_bookmarks[@]} -eq 0 ]]; then
+        log_info "No revision bookmarks found on remote"
+        return 0
+    fi
+
+    local threshold_days="${JJ_SYNC_GC_REVS_DAYS:-7}"
+    local threshold_secs=$((threshold_days * 24 * 60 * 60))
+    local now
+    now=$(date +%s)
+
+    local deleted=0
+    local kept=0
+
+    for ref in "${remote_bookmarks[@]}"; do
+        # Get the commit for this ref
+        local commit
+        commit=$(get_remote_commit "$ref" 2>/dev/null) || continue
+
+        # Get commit timestamp
+        local commit_time
+        commit_time=$(get_commit_timestamp "$commit" 2>/dev/null) || continue
+
+        local age=$((now - commit_time))
+
+        if [[ $age -ge $threshold_secs ]]; then
+            verbose "Deleting old bookmark: $ref (age: $((age / 86400)) days)"
+            if ! is_dry_run; then
+                delete_remote_ref "$ref"
+            fi
+            ((deleted++)) || true
+        else
+            ((kept++)) || true
+        fi
+    done
+
+    if [[ $deleted -gt 0 ]]; then
+        log_success "Deleted $deleted old bookmark(s), kept $kept recent one(s)"
+    else
+        log_info "No old bookmarks to delete (kept $kept)"
+    fi
+}
+
+# Garbage collect long docs commit chains
+gc_docs() {
+    log_info "Checking docs commit chain lengths..."
+
+    detect_git_dir
+
+    local all_docs_glob
+    all_docs_glob=$(get_all_docs_glob)
+
+    # List all docs bookmarks on remote
+    local docs_refs=()
+    local ref
+    while IFS= read -r ref; do
+        [[ -n "$ref" ]] && docs_refs+=("$ref")
+    done < <(list_remote_refs "$all_docs_glob")
+
+    if [[ ${#docs_refs[@]} -eq 0 ]]; then
+        log_info "No docs bookmarks found on remote"
+        return 0
+    fi
+
+    local max_chain="${JJ_SYNC_GC_DOCS_MAX_CHAIN:-50}"
+
+    for ref in "${docs_refs[@]}"; do
+        local commit
+        commit=$(get_remote_commit "$ref" 2>/dev/null) || continue
+
+        # Count chain length
+        local chain_length
+        chain_length=$(git_cmd rev-list --count "$commit" 2>/dev/null) || continue
+
+        verbose "$ref: chain length $chain_length"
+
+        if [[ $chain_length -gt $max_chain ]]; then
+            log_info "$ref: chain length $chain_length exceeds threshold $max_chain"
+
+            if is_dry_run; then
+                log_info "[dry-run] Would squash to single commit"
+                continue
+            fi
+
+            # Squash: create new orphan commit with same tree
+            local tree
+            tree=$(git_cmd rev-parse "$commit^{tree}" 2>/dev/null)
+
+            local new_commit
+            new_commit=$(create_commit "$tree" "jj-sync docs (squashed)")
+
+            # Force push the new commit to refs/jj-sync/ namespace
+            git_cmd push --force "$JJ_SYNC_REMOTE" "$new_commit:refs/jj-sync/$ref" 2>/dev/null
+
+            log_success "$ref: squashed from $chain_length commits to 1"
+        fi
+    done
+}
+
+# Remove sync state for the current user
+clean_all() {
+    log_info "Removing sync state for user '$JJ_SYNC_USER'..."
+
+    detect_git_dir
+
+    # List sync bookmarks scoped to the current user
+    local all_refs=()
+    local ref
+    while IFS= read -r ref; do
+        [[ -n "$ref" ]] && all_refs+=("$ref")
+    done < <(list_remote_refs "${JJ_SYNC_PREFIX}/${JJ_SYNC_USER}/*")
+
+    if [[ ${#all_refs[@]} -eq 0 ]]; then
+        log_info "No sync state found on remote"
+        return 0
+    fi
+
+    log_warn "Found ${#all_refs[@]} sync bookmark(s) on remote for user '$JJ_SYNC_USER'"
+
+    if is_dry_run; then
+        log_info "[dry-run] Would delete:"
+        for ref in "${all_refs[@]}"; do
+            list_item "$ref"
+        done
+        return 0
+    fi
+
+    # Delete each ref
+    local deleted=0
+    for ref in "${all_refs[@]}"; do
+        verbose "Deleting: $ref"
+        delete_remote_ref "$ref"
+        ((deleted++)) || true
+    done
+
+    # Also clean up local refs
+    while IFS= read -r ref; do
+        [[ -n "$ref" ]] && delete_local_ref "$ref"
+    done < <(git_cmd branch --list "${JJ_SYNC_PREFIX}/${JJ_SYNC_USER}/*" 2>/dev/null | sed 's/^[* ]*//')
+
+    if is_jj_repo; then
+        jj git import --quiet 2>/dev/null || log_warn "Failed to import into jj after cleanup"
+    fi
+
+    log_success "Deleted $deleted sync bookmark(s)"
+}
+
+# Show sync status
+show_status() {
+    detect_git_dir
+
+    section "jj-sync status"
+
+    # Attempt remote resolution non-fatally
+    local remote_resolved=true
+    if [[ -n "$JJ_SYNC_REMOTE" ]]; then
+        if ! git_cmd remote get-url "$JJ_SYNC_REMOTE" >/dev/null 2>&1; then
+            remote_resolved=false
+        fi
+    else
+        # Try auto-detect without dying on failure
+        local remotes=()
+        local name
+        while IFS= read -r name; do
+            [[ -n "$name" ]] && remotes+=("$name")
+        done < <(list_git_remotes 2>/dev/null)
+
+        if [[ ${#remotes[@]} -eq 1 ]]; then
+            JJ_SYNC_REMOTE="${remotes[0]}"
+        else
+            remote_resolved=false
+        fi
+    fi
+
+    # Remote info
+    if [[ "$remote_resolved" == "true" ]]; then
+        local remote_url
+        remote_url=$(get_remote_url 2>/dev/null) || remote_url="(unknown)"
+        kv "Remote" "$JJ_SYNC_REMOTE → $remote_url"
+    else
+        kv "Remote" "(not configured)"
+    fi
+    kv "User" "${JJ_SYNC_USER:-(not set)}"
+    kv "Machine" "$JJ_SYNC_MACHINE"
+
+    # Local revisions (requires jj)
+    if is_jj_repo; then
+        section "Revisions"
+        local rev_count
+        rev_count=$(count_sync_revisions)
+        kv "Would push" "$rev_count revision(s)"
+
+        if [[ $rev_count -gt 0 ]]; then
+            echo ""
+            list_sync_revisions | head -10
+            if [[ $rev_count -gt 10 ]]; then
+                echo "  ... and $((rev_count - 10)) more"
+            fi
+        fi
+    fi
+
+    # Remote sections require a resolved remote
+    if [[ "$remote_resolved" != "true" ]]; then
+        section "Docs"
+        if [[ -n "${JJ_SYNC_DOCS:-}" ]]; then
+            kv "JJ_SYNC_DOCS" "$JJ_SYNC_DOCS"
+            echo ""
+            list_doc_dirs
+        else
+            log_info "Not configured (set JJ_SYNC_DOCS to enable)"
+        fi
+        return 0
+    fi
+
+    # Remote revision state (requires jj)
+    if is_jj_repo; then
+        local all_revs_glob
+        all_revs_glob=$(get_all_revs_glob)
+        local remote_revs=()
+        local ref
+        while IFS= read -r ref; do
+            [[ -n "$ref" ]] && remote_revs+=("$ref")
+        done < <(list_remote_refs "$all_revs_glob")
+
+        if [[ ${#remote_revs[@]} -gt 0 ]]; then
+            echo ""
+            log_info "Remote revisions:"
+
+            # Group by machine
+            # Ref format: sync/<user>/<machine>/revs/<change_id>
+            declare -A machine_counts
+            for ref in "${remote_revs[@]}"; do
+                local machine
+                machine=$(echo "$ref" | cut -d'/' -f3)
+                machine_counts[$machine]=$(( ${machine_counts[$machine]:-0} + 1 ))
+            done
+
+            for machine in "${!machine_counts[@]}"; do
+                list_item "$machine: ${machine_counts[$machine]} revision(s)"
+            done
+        fi
+    fi
+
+    # Docs section
+    section "Docs"
+    if [[ -n "${JJ_SYNC_DOCS:-}" ]]; then
+        kv "JJ_SYNC_DOCS" "$JJ_SYNC_DOCS"
+        echo ""
+        list_doc_dirs
+    else
+        log_info "Not configured (set JJ_SYNC_DOCS to enable)"
+    fi
+
+    # Remote docs state
+    local all_docs_glob
+    all_docs_glob=$(get_all_docs_glob)
+    local remote_docs=()
+    while IFS= read -r ref; do
+        [[ -n "$ref" ]] && remote_docs+=("$ref")
+    done < <(list_remote_refs "$all_docs_glob")
+
+    if [[ ${#remote_docs[@]} -gt 0 ]]; then
+        echo ""
+        log_info "Remote docs:"
+        for ref in "${remote_docs[@]}"; do
+            list_item "$ref"
+        done
+    fi
+}
+
+# Interactive setup
+init_setup() {
+    section "jj-sync init"
+
+    # Check prerequisites
+    log_info "Checking prerequisites..."
+
+    # Check git version
+    local git_version
+    git_version=$(git --version | grep -oE '[0-9]+\.[0-9]+' | head -1)
+    local git_major git_minor
+    git_major=$(echo "$git_version" | cut -d. -f1)
+    git_minor=$(echo "$git_version" | cut -d. -f2)
+
+    if [[ "$git_major" -lt 2 ]] || { [[ "$git_major" -eq 2 ]] && [[ "$git_minor" -lt 38 ]]; }; then
+        die "git version must be >= 2.38 (found $git_version)"
+    fi
+    list_item "git $git_version ✓"
+
+    # Check jj (optional — only needed for revision sync)
+    if command -v jj &>/dev/null; then
+        local jj_version
+        jj_version=$(jj --version | head -1)
+        list_item "$jj_version ✓"
+
+        if jj root &>/dev/null; then
+            list_item "jj repository ✓"
+        else
+            list_item "jj installed but not in a jj repo (revision sync unavailable)"
+        fi
+    else
+        list_item "jj not installed (revision sync unavailable, doc sync works)"
+    fi
+
+    # Check we're in a git repo
+    if ! detect_git_dir; then
+        die "Not in a git repository"
+    fi
+    list_item "git repository ✓"
+
+    echo ""
+
+    # Check if remote already exists
+    local remote="${JJ_SYNC_REMOTE:-origin}"
+    if git remote get-url "$remote" &>/dev/null; then
+        local url
+        url=$(git remote get-url "$remote")
+        log_info "Remote '$remote' already configured: $url"
+    else
+        log_info "Remote '$remote' not found."
+        echo ""
+        echo "To complete setup, add a personal remote:"
+        echo ""
+        echo "  jj git remote add $remote <your-remote-url>"
+        echo ""
+        echo "Example:"
+        echo "  jj git remote add $remote git@github.com:username/repo-sync.git"
+    fi
+
+    echo ""
+    log_info "Environment variables to set in your shell profile:"
+    echo ""
+    echo "  # Required for doc sync"
+    echo "  export JJ_SYNC_DOCS=\"ai/docs .claude\""
+    echo ""
+    echo "  # Optional overrides"
+    echo "  export JJ_SYNC_REMOTE=\"$remote\""
+    echo "  export JJ_SYNC_MACHINE=\"$(hostname)\""
+    echo ""
+
+    log_success "Setup complete!"
+}
+
+# === Command Dispatch ===
 
 usage() {
     cat <<EOF
@@ -252,4 +1768,7 @@ cmd_init() {
     init_setup
 }
 
-main "$@"
+# Only run main when executed directly (not when sourced for testing)
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    main "$@"
+fi

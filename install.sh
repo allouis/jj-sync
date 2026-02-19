@@ -56,23 +56,14 @@ install_jj_sync() {
 
     # Create directories
     mkdir -p "$BINDIR"
-    mkdir -p "$LIBDIR"
     mkdir -p "$COMPLETIONS_DIR_BASH"
     mkdir -p "$COMPLETIONS_DIR_ZSH"
     mkdir -p "$COMPLETIONS_DIR_FISH"
 
-    # Copy library files
-    info "Installing library files to $LIBDIR"
-    cp -r "$script_dir/lib/"*.sh "$LIBDIR/"
-    success "Library files installed"
-
-    # Create the main script with correct LIBDIR
+    # Install the self-contained script
     info "Installing jj-sync to $BINDIR"
-    sed "s|^SCRIPT_DIR=.*|LIBDIR=\"$LIBDIR\"|" "$script_dir/jj-sync" > "$BINDIR/jj-sync"
+    cp "$script_dir/jj-sync" "$BINDIR/jj-sync"
     chmod +x "$BINDIR/jj-sync"
-
-    # Fix the source paths in the installed script
-    sed -i "s|source \"\$SCRIPT_DIR/lib/|source \"\$LIBDIR/|g" "$BINDIR/jj-sync"
     success "jj-sync installed"
 
     # Install completions
