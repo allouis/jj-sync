@@ -633,3 +633,91 @@ teardown() {
     [[ "$output" == *"No doc directories specified"* ]]
     [[ "$output" == *"jj-sync push --docs ai/docs .claude"* ]]
 }
+
+@test "V34: Doc sync skips git-tracked files" {
+    cd_to_machine "$MACHINE_LAPTOP"
+
+    # Create .claude directory with a tracked file
+    mkdir -p .claude
+    echo '{"key": "laptop-value"}' > .claude/settings.json
+    echo "*.local.json" > .claude/.gitignore
+
+    # Commit both settings.json and .gitignore so they're tracked
+    jj file track .claude/settings.json .claude/.gitignore >/dev/null 2>&1
+    jj commit -m "Add settings.json and .gitignore" >/dev/null 2>&1
+
+    # Add a gitignored (untracked) file in the same directory
+    echo "local notes" > .claude/settings.local.json
+
+    # Push docs — should only include settings.local.json (not tracked files)
+    run_jj_sync_with_docs "$MACHINE_LAPTOP" ".claude" push --docs
+
+    # Pull on another machine that has its own tracked settings.json
+    cd_to_machine "$MACHINE_DEV1"
+    mkdir -p .claude
+    echo '{"key": "dev1-value"}' > .claude/settings.json
+    echo "*.local.json" > .claude/.gitignore
+    jj file track .claude/settings.json .claude/.gitignore >/dev/null 2>&1
+    jj commit -m "Add settings.json on dev1" >/dev/null 2>&1
+
+    # Add a local untracked file that should be cleaned up by pull
+    echo "old local" > .claude/old-untracked.md
+
+    run_jj_sync_with_docs "$MACHINE_DEV1" ".claude" pull --docs
+
+    # Tracked file should still have dev1's content (not overwritten)
+    assert_file_equals ".claude/settings.json" '{"key": "dev1-value"}'
+
+    # Tracked .gitignore should also be preserved
+    assert_file_exists ".claude/.gitignore"
+
+    # Untracked file from laptop should have been pulled
+    assert_file_exists ".claude/settings.local.json"
+    assert_file_equals ".claude/settings.local.json" "local notes"
+
+    # Pre-existing untracked file not in snapshot should be deleted
+    assert_file_not_exists ".claude/old-untracked.md"
+}
+
+@test "V35: Doc sync skips nested tracked files" {
+    cd_to_machine "$MACHINE_LAPTOP"
+
+    # Create nested structure with tracked files at multiple levels
+    mkdir -p .claude/config/profiles
+    echo '{"global": true}' > .claude/config/settings.json
+    echo '{"profile": "default"}' > .claude/config/profiles/default.json
+    echo "ignored-pattern" > .claude/.gitignore
+
+    # Commit the tracked files
+    jj file track .claude/config/settings.json .claude/config/profiles/default.json .claude/.gitignore >/dev/null 2>&1
+    jj commit -m "Add nested tracked files" >/dev/null 2>&1
+
+    # Add gitignored untracked files at various nesting levels
+    echo "*.local.*" >> .claude/.gitignore
+    echo "local config" > .claude/config/settings.local.json
+    echo "local profile" > .claude/config/profiles/custom.local.json
+
+    # Push docs
+    run_jj_sync_with_docs "$MACHINE_LAPTOP" ".claude" push --docs
+
+    # Pull on another machine with its own tracked files
+    cd_to_machine "$MACHINE_DEV1"
+    mkdir -p .claude/config/profiles
+    echo '{"global": false}' > .claude/config/settings.json
+    echo '{"profile": "dev1"}' > .claude/config/profiles/default.json
+    echo "ignored-pattern" > .claude/.gitignore
+    jj file track .claude/config/settings.json .claude/config/profiles/default.json .claude/.gitignore >/dev/null 2>&1
+    jj commit -m "Add nested tracked files on dev1" >/dev/null 2>&1
+
+    run_jj_sync_with_docs "$MACHINE_DEV1" ".claude" pull --docs
+
+    # Nested tracked files should keep dev1's content
+    assert_file_equals ".claude/config/settings.json" '{"global": false}'
+    assert_file_equals ".claude/config/profiles/default.json" '{"profile": "dev1"}'
+
+    # Untracked files from laptop should have been pulled
+    assert_file_exists ".claude/config/settings.local.json"
+    assert_file_equals ".claude/config/settings.local.json" "local config"
+    assert_file_exists ".claude/config/profiles/custom.local.json"
+    assert_file_equals ".claude/config/profiles/custom.local.json" "local profile"
+}

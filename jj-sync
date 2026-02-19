@@ -301,6 +301,13 @@ get_docs_dirs() {
     done
 }
 
+# List git-tracked files within given directories
+# Usage: get_tracked_files_in_dirs dir1 dir2 ...
+# Outputs: one tracked file per line (paths relative to repo root)
+get_tracked_files_in_dirs() {
+    git_cmd ls-files -- "$@" 2>/dev/null || true
+}
+
 # Get the bookmark prefix for this machine's revisions
 get_revs_prefix() {
     echo "${JJ_SYNC_PREFIX}/${JJ_SYNC_USER}/${JJ_SYNC_MACHINE}/revs"
@@ -473,9 +480,12 @@ get_remote_url() {
 }
 
 # Create a tree object from files in specified directories
-# Usage: create_tree_from_files dir1 dir2 ...
+# Usage: create_tree_from_files <skip_list> dir1 dir2 ...
+# skip_list: newline-separated list of files to skip (empty string to skip none)
 # Outputs: tree SHA
 create_tree_from_files() {
+    local skip_list="$1"
+    shift
     local dirs=("$@")
     local temp_index
     temp_index=$(mktemp -u)  # -u: don't create, just generate name
@@ -492,8 +502,12 @@ create_tree_from_files() {
             if [[ -d "$dir" ]]; then
                 # Find all files and add them
                 while IFS= read -r -d '' file; do
-                    # Add file to index, bypassing .gitignore with -f
-                    git_cmd add -f "$file" 2>/dev/null || log_warn "Failed to add file: $file"
+                    if [[ -n "$skip_list" ]] && printf '%s\n' "$skip_list" | grep -qxF "$file"; then
+                        verbose "Skipping tracked file: $file"
+                    else
+                        # Add file to index, bypassing .gitignore with -f
+                        git_cmd add -f "$file" 2>/dev/null || log_warn "Failed to add file: $file"
+                    fi
                 done < <(find "$dir" -type f -print0)
             fi
         done
@@ -919,11 +933,14 @@ push_docs() {
         verbose "No previous docs commit found (first push)"
     fi
 
-    # Create tree from local doc files
+    # Create tree from local doc files, skipping git-tracked files
     # Each machine pushes its own current state - merge happens on pull
     verbose "Creating tree from local doc files"
+    local tracked_files
+    tracked_files=$(get_tracked_files_in_dirs "${valid_dirs[@]}")
+
     local tree
-    tree=$(create_tree_from_files "${valid_dirs[@]}")
+    tree=$(create_tree_from_files "$tracked_files" "${valid_dirs[@]}")
 
     if [[ -z "$tree" ]]; then
         die "Failed to create tree from doc files"
@@ -1082,20 +1099,40 @@ pull_docs() {
         die "Failed to extract docs — existing files left untouched"
     fi
 
+    # Get tracked files in doc dirs to avoid overwriting them
+    local tracked_files
+    tracked_files=$(get_tracked_files_in_dirs "${doc_dirs[@]}")
+
     # Extraction succeeded — now safe to replace old files
     for dir in "${doc_dirs[@]}"; do
         if [[ -d "$dir" ]]; then
             verbose "Cleaning existing files in $dir"
-            find "$dir" -type f -delete 2>/dev/null || log_warn "Failed to delete some files in $dir"
+            while IFS= read -r -d '' file; do
+                if [[ -n "$tracked_files" ]] && printf '%s\n' "$tracked_files" | grep -qxF "$file"; then
+                    verbose "Skipping tracked file: $file"
+                else
+                    rm -f "$file"
+                fi
+            done < <(find "$dir" -type f -print0)
         fi
     done
 
-    # Move extracted files into place
+    # Move extracted files into place, skipping tracked files
     verbose "Moving extracted docs to working directory"
     for dir in "${doc_dirs[@]}"; do
         if [[ -d "$staging_dir/$dir" ]]; then
             mkdir -p "$dir"
-            cp -R "$staging_dir/$dir/." "$dir/"
+            while IFS= read -r -d '' file; do
+                local rel_file="${file#$staging_dir/}"
+                if [[ -n "$tracked_files" ]] && printf '%s\n' "$tracked_files" | grep -qxF "$rel_file"; then
+                    verbose "Skipping tracked file: $rel_file"
+                else
+                    local target_dir
+                    target_dir=$(dirname "$rel_file")
+                    mkdir -p "$target_dir"
+                    cp "$file" "$rel_file"
+                fi
+            done < <(find "$staging_dir/$dir" -type f -print0)
         fi
     done
 
