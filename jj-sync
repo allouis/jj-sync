@@ -87,14 +87,17 @@ main() {
                 shift
                 ;;
             --remote)
+                [[ $# -lt 2 ]] && die "--remote requires a value"
                 OPT_REMOTE="$2"
                 shift 2
                 ;;
             --user)
+                [[ $# -lt 2 ]] && die "--user requires a value"
                 OPT_USER="$2"
                 shift 2
                 ;;
             --machine)
+                [[ $# -lt 2 ]] && die "--machine requires a value"
                 OPT_MACHINE="$2"
                 shift 2
                 ;;

@@ -453,3 +453,27 @@ teardown() {
     cd_to_machine "$MACHINE_DEV1"
     assert_file_exists "ai/docs/doc1.md"
 }
+
+@test "V26: --remote without value gives clear error" {
+    cd_to_machine "$MACHINE_LAPTOP"
+
+    run run_jj_sync "$MACHINE_LAPTOP" push --remote
+    [[ "$status" -ne 0 ]]
+    [[ "$output" == *"--remote requires a value"* ]]
+}
+
+@test "V27: --user without value gives clear error" {
+    cd_to_machine "$MACHINE_LAPTOP"
+
+    run run_jj_sync "$MACHINE_LAPTOP" push --user
+    [[ "$status" -ne 0 ]]
+    [[ "$output" == *"--user requires a value"* ]]
+}
+
+@test "V28: --machine without value gives clear error" {
+    cd_to_machine "$MACHINE_LAPTOP"
+
+    run run_jj_sync "$MACHINE_LAPTOP" push --machine
+    [[ "$status" -ne 0 ]]
+    [[ "$output" == *"--machine requires a value"* ]]
+}
