@@ -503,19 +503,6 @@ get_commit_timestamp() {
     git_cmd show -s --format=%ct "$commit"
 }
 
-# Check if a ref exists locally
-# Usage: ref_exists <refname>
-ref_exists_local() {
-    local ref="$1"
-    git_cmd rev-parse --verify "refs/heads/$ref" >/dev/null 2>&1
-}
-
-# Check if a ref exists on the remote
-# Usage: ref_exists_remote <refname>
-ref_exists_remote() {
-    local ref="$1"
-    git_cmd ls-remote --heads "$JJ_SYNC_REMOTE" "$ref" | grep -q .
-}
 
 # List refs on remote matching a pattern
 # Usage: list_remote_refs <pattern>
@@ -578,14 +565,6 @@ get_remote_commit() {
     return 1
 }
 
-# Update a local ref to point to a commit
-# Usage: update_ref <refname> <commit>
-update_ref() {
-    local ref="$1"
-    local commit="$2"
-    git_cmd update-ref "refs/heads/$ref" "$commit"
-}
-
 # Delete a local ref
 # Usage: delete_local_ref <refname>
 delete_local_ref() {
@@ -602,29 +581,6 @@ extract_tree() {
 
     # Use git archive to extract
     git_cmd archive "$tree" | tar -x -C "$prefix"
-}
-
-# Three-way merge of trees using git merge-tree
-# Usage: merge_trees <base> <ours> <theirs>
-# Outputs: merged tree SHA
-# Returns: 0 if clean merge, 1 if conflicts
-merge_trees() {
-    local base="$1"
-    local ours="$2"
-    local theirs="$3"
-
-    local result
-    result=$(git_cmd merge-tree --write-tree "$base" "$ours" "$theirs" 2>&1)
-    local status=$?
-
-    if [[ $status -eq 0 ]]; then
-        echo "$result"
-        return 0
-    else
-        # First line is the tree with conflicts
-        echo "$result" | head -1
-        return 1
-    fi
 }
 
 # Find common ancestor of two commits

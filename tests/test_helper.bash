@@ -152,20 +152,7 @@ new_revision() {
     fi
 }
 
-# Create multiple WIP changes for testing
-# Usage: create_wip_changes <count>
-create_wip_changes() {
-    local count="$1"
-    local i
 
-    for ((i=1; i<=count; i++)); do
-        make_change "file$i.txt" "content $i"
-        jj describe -m "WIP change $i" >/dev/null 2>&1
-        if [[ $i -lt $count ]]; then
-            jj new >/dev/null 2>&1
-        fi
-    done
-}
 
 # ============================================================================
 # Doc Directory Helpers
@@ -355,11 +342,6 @@ get_current_commit_id() {
 jj_has_change() {
     local change_id="$1"
     jj log -r "$change_id" --no-graph >/dev/null 2>&1
-}
-
-# Count the number of WIP changes (mine, not empty, not immutable)
-count_wip_changes() {
-    jj log -r 'mine() & ~empty() & ~immutable_heads() & ~trunk()' --no-graph -T 'change_id.short(12) ++ "\n"' 2>/dev/null | grep -c . || echo 0
 }
 
 # ============================================================================
