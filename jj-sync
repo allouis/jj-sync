@@ -688,8 +688,6 @@ push_revisions() {
 pull_revisions() {
     log_info "Pulling revisions..."
 
-    detect_git_dir
-
     # Get the glob pattern for all machines' revision bookmarks
     local all_revs_glob
     all_revs_glob=$(get_all_revs_glob)
@@ -880,9 +878,6 @@ push_docs() {
         return 0
     fi
 
-    # Ensure git dir is detected
-    detect_git_dir
-
     # Get the docs bookmark name
     local docs_bookmark
     docs_bookmark=$(get_docs_bookmark)
@@ -940,9 +935,6 @@ push_docs() {
 # Pull gitignored docs from the sync remote
 pull_docs() {
     log_info "Pulling docs..."
-
-    # Ensure git dir is detected
-    detect_git_dir
 
     # Fetch from remote first
     verbose "Fetching from $JJ_SYNC_REMOTE"
@@ -1136,8 +1128,6 @@ count_doc_files() {
 gc_revisions() {
     log_info "Cleaning up old revision bookmarks..."
 
-    detect_git_dir
-
     # Fetch from remote first to get current state
     fetch_remote 2>/dev/null || log_warn "Failed to fetch from remote (GC may use stale state)"
 
@@ -1197,8 +1187,6 @@ gc_revisions() {
 gc_docs() {
     log_info "Checking docs commit chain lengths..."
 
-    detect_git_dir
-
     local all_docs_glob
     all_docs_glob=$(get_all_docs_glob)
 
@@ -1253,8 +1241,6 @@ gc_docs() {
 clean_all() {
     log_info "Removing sync state for user '$JJ_SYNC_USER'..."
 
-    detect_git_dir
-
     # List sync bookmarks scoped to the current user
     local all_refs=()
     local ref
@@ -1299,8 +1285,6 @@ clean_all() {
 
 # Show sync status
 show_status() {
-    detect_git_dir
-
     section "jj-sync status"
 
     # Attempt remote resolution non-fatally
