@@ -28,6 +28,7 @@ usage() {
 Usage: jj-sync <command> [options]
 
 Sync WIP jj revisions and gitignored docs across machines.
+(Doc sync works in any git repo; revision sync requires jj.)
 
 Commands:
   push      Push to sync remote
@@ -165,7 +166,11 @@ main() {
 }
 
 cmd_push() {
-    require_jj_repo
+    if [[ "$SYNC_MODE" == "docs" ]]; then
+        require_git_repo
+    else
+        require_jj_repo
+    fi
     require_remote
     require_user
 
@@ -184,7 +189,11 @@ cmd_push() {
 }
 
 cmd_pull() {
-    require_jj_repo
+    if [[ "$SYNC_MODE" == "docs" ]]; then
+        require_git_repo
+    else
+        require_jj_repo
+    fi
     require_remote
     require_user
 
@@ -203,16 +212,18 @@ cmd_pull() {
 }
 
 cmd_status() {
-    require_jj_repo
+    require_git_repo
     show_status
 }
 
 cmd_gc() {
-    require_jj_repo
+    require_git_repo
     require_remote
     require_user
 
-    gc_revisions
+    if is_jj_repo; then
+        gc_revisions
+    fi
 
     if [[ -n "${JJ_SYNC_DOCS:-}" ]]; then
         gc_docs
@@ -220,7 +231,7 @@ cmd_gc() {
 }
 
 cmd_clean() {
-    require_jj_repo
+    require_git_repo
     require_remote
     require_user
 

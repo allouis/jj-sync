@@ -85,6 +85,27 @@ create_jj_repo() {
     cd - >/dev/null || return 1
 }
 
+# Create a plain git repository (no jj) for a machine
+# Usage: create_plain_git_repo <machine_name>
+create_plain_git_repo() {
+    local machine="$1"
+    local repo_dir="$TEST_DIR/$machine"
+
+    mkdir -p "$repo_dir"
+    cd "$repo_dir" || return 1
+
+    git init >/dev/null 2>&1
+
+    # Add the sync remote
+    git remote add sync "$TEST_DIR/remote.git" >/dev/null 2>&1
+
+    # Configure git user for commits
+    git config user.email "test@example.com"
+    git config user.name "Test User"
+
+    cd - >/dev/null || return 1
+}
+
 # Switch to a machine's repo directory
 # Usage: cd_to_machine <machine_name>
 cd_to_machine() {

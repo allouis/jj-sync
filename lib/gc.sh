@@ -159,7 +159,9 @@ clean_all() {
         [[ -n "$ref" ]] && delete_local_ref "$ref"
     done < <(git_cmd branch --list "${JJ_SYNC_PREFIX}/${JJ_SYNC_USER}/*" 2>/dev/null | sed 's/^[* ]*//')
 
-    jj git import --quiet 2>/dev/null || true
+    if is_jj_repo; then
+        jj git import --quiet 2>/dev/null || true
+    fi
 
     log_success "Deleted $deleted sync bookmark(s)"
 }
@@ -202,17 +204,19 @@ show_status() {
     kv "User" "${JJ_SYNC_USER:-(not set)}"
     kv "Machine" "$JJ_SYNC_MACHINE"
 
-    # Local revisions
-    section "Revisions"
-    local rev_count
-    rev_count=$(count_sync_revisions)
-    kv "Would push" "$rev_count revision(s)"
+    # Local revisions (requires jj)
+    if is_jj_repo; then
+        section "Revisions"
+        local rev_count
+        rev_count=$(count_sync_revisions)
+        kv "Would push" "$rev_count revision(s)"
 
-    if [[ $rev_count -gt 0 ]]; then
-        echo ""
-        list_sync_revisions | head -10
-        if [[ $rev_count -gt 10 ]]; then
-            echo "  ... and $((rev_count - 10)) more"
+        if [[ $rev_count -gt 0 ]]; then
+            echo ""
+            list_sync_revisions | head -10
+            if [[ $rev_count -gt 10 ]]; then
+                echo "  ... and $((rev_count - 10)) more"
+            fi
         fi
     fi
 
@@ -229,31 +233,33 @@ show_status() {
         return 0
     fi
 
-    # Remote revision state
-    local all_revs_glob
-    all_revs_glob=$(get_all_revs_glob)
-    local remote_revs=()
-    local ref
-    while IFS= read -r ref; do
-        [[ -n "$ref" ]] && remote_revs+=("$ref")
-    done < <(list_remote_refs "$all_revs_glob")
+    # Remote revision state (requires jj)
+    if is_jj_repo; then
+        local all_revs_glob
+        all_revs_glob=$(get_all_revs_glob)
+        local remote_revs=()
+        local ref
+        while IFS= read -r ref; do
+            [[ -n "$ref" ]] && remote_revs+=("$ref")
+        done < <(list_remote_refs "$all_revs_glob")
 
-    if [[ ${#remote_revs[@]} -gt 0 ]]; then
-        echo ""
-        log_info "Remote revisions:"
+        if [[ ${#remote_revs[@]} -gt 0 ]]; then
+            echo ""
+            log_info "Remote revisions:"
 
-        # Group by machine
-        # Ref format: sync/<user>/<machine>/revs/<change_id>
-        declare -A machine_counts
-        for ref in "${remote_revs[@]}"; do
-            local machine
-            machine=$(echo "$ref" | cut -d'/' -f3)
-            machine_counts[$machine]=$(( ${machine_counts[$machine]:-0} + 1 ))
-        done
+            # Group by machine
+            # Ref format: sync/<user>/<machine>/revs/<change_id>
+            declare -A machine_counts
+            for ref in "${remote_revs[@]}"; do
+                local machine
+                machine=$(echo "$ref" | cut -d'/' -f3)
+                machine_counts[$machine]=$(( ${machine_counts[$machine]:-0} + 1 ))
+            done
 
-        for machine in "${!machine_counts[@]}"; do
-            list_item "$machine: ${machine_counts[$machine]} revision(s)"
-        done
+            for machine in "${!machine_counts[@]}"; do
+                list_item "$machine: ${machine_counts[$machine]} revision(s)"
+            done
+        fi
     fi
 
     # Docs section
@@ -302,19 +308,26 @@ init_setup() {
     fi
     list_item "git $git_version ✓"
 
-    # Check jj
-    if ! command -v jj &>/dev/null; then
-        die "jj is not installed"
-    fi
-    local jj_version
-    jj_version=$(jj --version | head -1)
-    list_item "$jj_version ✓"
+    # Check jj (optional — only needed for revision sync)
+    if command -v jj &>/dev/null; then
+        local jj_version
+        jj_version=$(jj --version | head -1)
+        list_item "$jj_version ✓"
 
-    # Check we're in a jj repo
-    if ! jj root &>/dev/null; then
-        die "Not in a jj repository"
+        if jj root &>/dev/null; then
+            list_item "jj repository ✓"
+        else
+            list_item "jj installed but not in a jj repo (revision sync unavailable)"
+        fi
+    else
+        list_item "jj not installed (revision sync unavailable, doc sync works)"
     fi
-    list_item "jj repository ✓"
+
+    # Check we're in a git repo
+    if ! detect_git_dir; then
+        die "Not in a git repository"
+    fi
+    list_item "git repository ✓"
 
     echo ""
 

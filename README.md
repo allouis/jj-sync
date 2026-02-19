@@ -95,10 +95,17 @@ jj-sync push --docs   # sync docs only
 jj-sync push --both   # sync revisions + docs
 ```
 
+## Plain Git Support
+
+Doc sync works in any git repository — jj is not required. This is useful for
+syncing gitignored directories in projects that don't use jj.
+
+Revision sync still requires jj.
+
 ## Requirements
 
 - git ≥ 2.38
-- jj (jujutsu)
+- jj (jujutsu) — only required for revision sync
 - bash ≥ 4.0
 
 ## License

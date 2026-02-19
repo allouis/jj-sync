@@ -50,7 +50,7 @@ teardown() {
     [[ "$output" =~ "Available remotes" ]]
 }
 
-@test "E3: Not in jj repo errors gracefully" {
+@test "E3: Not in a repo errors gracefully" {
     cd "$TEST_DIR"
     mkdir -p notarepo
     cd notarepo
@@ -59,7 +59,7 @@ teardown() {
 
     # Should fail with clear error
     [[ "$status" -ne 0 ]]
-    [[ "$output" =~ "Not in a jj repository" ]]
+    [[ "$output" =~ "Not in a git repository" ]]
 }
 
 @test "E4: Unknown command errors gracefully" {

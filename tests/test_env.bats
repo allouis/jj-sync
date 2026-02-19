@@ -273,6 +273,88 @@ teardown() {
     [[ "$bob_count" -eq 1 ]]
 }
 
+@test "V18: --docs push works in a plain git repo" {
+    create_plain_git_repo "plain-git"
+    cd_to_machine "plain-git"
+
+    # Create doc files
+    mkdir -p docs
+    echo "hello from plain git" > docs/note.md
+
+    run env \
+        JJ_SYNC_USER="$TEST_USER" \
+        JJ_SYNC_MACHINE="plain-git" \
+        JJ_SYNC_REMOTE="sync" \
+        JJ_SYNC_DOCS="docs" \
+        "$JJ_SYNC" push --docs
+
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == *"Pushed"* ]]
+
+    # Verify docs bookmark exists on remote
+    local count
+    count=$(count_remote_bookmarks "sync/$TEST_USER/plain-git/docs")
+    [[ "$count" -eq 1 ]]
+}
+
+@test "V19: --docs pull works in a plain git repo" {
+    # First push docs from a jj repo
+    cd_to_machine "$MACHINE_LAPTOP"
+    mkdir -p docs
+    echo "doc from laptop" > docs/note.md
+    run_jj_sync_with_docs "$MACHINE_LAPTOP" "docs" push --docs
+
+    # Now pull into a plain git repo
+    create_plain_git_repo "plain-git"
+    cd_to_machine "plain-git"
+
+    run env \
+        JJ_SYNC_USER="$TEST_USER" \
+        JJ_SYNC_MACHINE="plain-git" \
+        JJ_SYNC_REMOTE="sync" \
+        JJ_SYNC_DOCS="docs" \
+        "$JJ_SYNC" pull --docs
+
+    [[ "$status" -eq 0 ]]
+    assert_file_exists "docs/note.md"
+    assert_file_equals "docs/note.md" "doc from laptop"
+}
+
+@test "V20: status works in a plain git repo" {
+    create_plain_git_repo "plain-git"
+    cd_to_machine "plain-git"
+
+    mkdir -p docs
+    echo "hello" > docs/note.md
+
+    run env \
+        JJ_SYNC_USER="$TEST_USER" \
+        JJ_SYNC_MACHINE="plain-git" \
+        JJ_SYNC_REMOTE="sync" \
+        JJ_SYNC_DOCS="docs" \
+        "$JJ_SYNC" status
+
+    [[ "$status" -eq 0 ]]
+    # Should show docs section
+    [[ "$output" == *"Docs"* ]]
+    # Should NOT show revisions section (no jj)
+    [[ "$output" != *"Revisions"* ]]
+}
+
+@test "V21: revs mode errors in a plain git repo" {
+    create_plain_git_repo "plain-git"
+    cd_to_machine "plain-git"
+
+    run env \
+        JJ_SYNC_USER="$TEST_USER" \
+        JJ_SYNC_MACHINE="plain-git" \
+        JJ_SYNC_REMOTE="sync" \
+        "$JJ_SYNC" push
+
+    [[ "$status" -ne 0 ]]
+    [[ "$output" == *"Not in a jj repository"* ]]
+}
+
 @test "V17: Pull only fetches current user's refs" {
     # User A pushes from laptop
     cd_to_machine "$MACHINE_LAPTOP"

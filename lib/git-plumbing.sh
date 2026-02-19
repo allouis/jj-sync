@@ -34,14 +34,24 @@ git_cmd() {
     GIT_DIR="$GIT_DIR" GIT_WORK_TREE="$GIT_WORK_TREE" git "$@"
 }
 
+# Check that we're in a git repository (does not require jj)
+require_git_repo() {
+    if ! detect_git_dir; then
+        die "Not in a git repository"
+    fi
+}
+
+# Check if the current directory is a jj repository
+# Returns 0 if jj repo, 1 otherwise
+is_jj_repo() {
+    jj root >/dev/null 2>&1
+}
+
 # Check that we're in a jj repository
 require_jj_repo() {
-    if ! detect_git_dir; then
-        die "Not in a jj repository (no .git/ or .jj/repo/store/git/ found)"
-    fi
+    require_git_repo
 
-    # Also verify jj recognizes this as a repo
-    if ! jj root >/dev/null 2>&1; then
+    if ! is_jj_repo; then
         die "Not in a jj repository (jj root failed)"
     fi
 }

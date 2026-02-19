@@ -553,10 +553,15 @@ Add proper multi-machine support with doc merging.
 
 ### Required
 
-- `jj` (any recent version with `bookmark` subcommand)
 - `git` >= 2.38 (required for `git merge-tree --write-tree`)
 - `bash` >= 4.0
 - Standard Unix tools: `find`, `tar`, `mktemp`, `date`, `hostname`
+
+### Required for Revision Sync
+
+- `jj` (any recent version with `bookmark` subcommand)
+
+Doc sync works in any git repository without jj installed.
 
 The `init` command should verify minimum versions and fail with a clear message if not met.
 
