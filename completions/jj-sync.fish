@@ -22,8 +22,8 @@ complete -c jj-sync -l user -d 'Specify user identity for ref namespacing'
 complete -c jj-sync -l machine -d 'Specify machine name'
 
 # Push/pull specific options
-complete -c jj-sync -n '__fish_seen_subcommand_from push pull' -l docs -d 'Sync docs only'
-complete -c jj-sync -n '__fish_seen_subcommand_from push pull' -l both -d 'Sync revisions and docs'
+complete -c jj-sync -n '__fish_seen_subcommand_from push pull' -l docs -d 'Sync docs only (dirs override JJ_SYNC_DOCS)'
+complete -c jj-sync -n '__fish_seen_subcommand_from push pull' -l both -d 'Sync revisions + docs (dirs override JJ_SYNC_DOCS)'
 
 # GC/clean specific options
 complete -c jj-sync -n '__fish_seen_subcommand_from gc clean' -l force -d 'Skip confirmation'

@@ -27,8 +27,8 @@ _jj_sync() {
 
     local -a push_pull_opts
     push_pull_opts=(
-        '--docs[Sync docs only]'
-        '--both[Sync both revisions and docs]'
+        '--docs[Sync docs only (dirs override JJ_SYNC_DOCS)]'
+        '--both[Sync revisions + docs (dirs override JJ_SYNC_DOCS)]'
     )
 
     _arguments -C \
@@ -45,7 +45,8 @@ _jj_sync() {
                 push|pull)
                     _arguments \
                         "${global_opts[@]}" \
-                        "${push_pull_opts[@]}"
+                        "${push_pull_opts[@]}" \
+                        '*:directory:_files -/'
                     ;;
                 gc|clean)
                     _arguments \
