@@ -73,6 +73,10 @@ teardown() {
     echo "original line" > "docs/conflict.md"
     run_jj_sync_with_docs "$MACHINE_LAPTOP" "docs" push --docs
 
+    # Force a different timestamp so that shared history must come from
+    # pull_docs adopting laptop's commit, not from an accidental SHA collision
+    sleep 1
+
     # Dev-1 pulls AND pushes to establish shared history
     cd_to_machine "$MACHINE_DEV1"
     run_jj_sync_with_docs "$MACHINE_DEV1" "docs" pull --docs

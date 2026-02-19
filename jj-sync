@@ -1075,13 +1075,13 @@ pull_docs() {
         fi
     done
 
-    # If we merged, push the merged state as our new docs
-    if [[ ${#docs_commits[@]} -gt 1 ]]; then
-        local our_docs_bookmark
-        our_docs_bookmark=$(get_docs_bookmark)
-        verbose "Pushing merged docs as $our_docs_bookmark"
-        git_cmd push --force "$JJ_SYNC_REMOTE" "$final_commit:refs/jj-sync/$our_docs_bookmark" 2>/dev/null || true
-    fi
+    # Push the final commit as our own docs bookmark so future pushes
+    # build a parent chain rooted in this shared state
+    local our_docs_bookmark
+    our_docs_bookmark=$(get_docs_bookmark)
+    verbose "Pushing docs state as $our_docs_bookmark"
+    git_cmd push --force "$JJ_SYNC_REMOTE" "$final_commit:refs/jj-sync/$our_docs_bookmark" 2>/dev/null || \
+        log_warn "Failed to push docs bookmark (future merges may lack shared history)"
 
     # Show what was extracted
     local extracted_files
