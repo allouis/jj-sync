@@ -270,8 +270,11 @@ EOF
 require_docs_env() {
     if [[ -z "${JJ_SYNC_DOCS:-}" ]]; then
         cat >&2 <<EOF
-Error: --docs requires JJ_SYNC_DOCS environment variable
-Hint: export JJ_SYNC_DOCS="ai/docs .claude"
+Error: No doc directories specified
+
+Provide directories after --docs or set JJ_SYNC_DOCS:
+  jj-sync push --docs ai/docs .claude
+  export JJ_SYNC_DOCS="ai/docs .claude"
 EOF
         exit 1
     fi
@@ -1458,9 +1461,9 @@ Commands:
   help      Show this help
 
 Flags:
-  --docs    Sync docs only (requires JJ_SYNC_DOCS)
-  --both    Sync revisions + docs (requires JJ_SYNC_DOCS)
-            Default (no flag): sync revisions only
+  --docs [dir...]  Sync docs only (dirs override JJ_SYNC_DOCS)
+  --both [dir...]  Sync revisions + docs (dirs override JJ_SYNC_DOCS)
+                   Default (no flag): sync revisions only
 
 Options:
   --remote <name>   Override sync remote (default: auto-detected or \$JJ_SYNC_REMOTE)
@@ -1479,10 +1482,11 @@ Environment Variables:
   JJ_SYNC_GC_DOCS_MAX_CHAIN GC threshold for doc chain length (default: 50)
 
 Examples:
-  jj-sync push              # Push WIP revisions
-  jj-sync push --both       # Push revisions and docs
-  jj-sync pull --docs       # Pull only docs
-  jj-sync status            # Show sync status
+  jj-sync push                        # Push WIP revisions
+  jj-sync push --docs ai/docs .claude # Push specific doc directories
+  jj-sync push --both                 # Push revisions and docs
+  jj-sync pull --docs                 # Pull only docs
+  jj-sync status                      # Show sync status
 EOF
 }
 
@@ -1499,10 +1503,30 @@ main() {
             --docs)
                 SYNC_MODE="docs"
                 shift
+                # Consume optional inline directory arguments
+                local inline_dirs=()
+                while [[ $# -gt 0 ]]; do
+                    case "$1" in
+                        -*) break ;;
+                        push|pull|status|gc|clean|help) break ;;
+                        *) inline_dirs+=("$1"); shift ;;
+                    esac
+                done
+                [[ ${#inline_dirs[@]} -gt 0 ]] && JJ_SYNC_DOCS="${inline_dirs[*]}"
                 ;;
             --both)
                 SYNC_MODE="both"
                 shift
+                # Consume optional inline directory arguments
+                local inline_dirs=()
+                while [[ $# -gt 0 ]]; do
+                    case "$1" in
+                        -*) break ;;
+                        push|pull|status|gc|clean|help) break ;;
+                        *) inline_dirs+=("$1"); shift ;;
+                    esac
+                done
+                [[ ${#inline_dirs[@]} -gt 0 ]] && JJ_SYNC_DOCS="${inline_dirs[*]}"
                 ;;
             --remote)
                 [[ $# -lt 2 ]] && die "--remote requires a value"

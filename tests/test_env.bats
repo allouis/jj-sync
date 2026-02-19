@@ -533,3 +533,103 @@ teardown() {
     [[ "$status" -ne 0 ]]
     [[ "$output" == *"--machine requires a value"* ]]
 }
+
+@test "V29: --docs with inline dirs overrides env var" {
+    cd_to_machine "$MACHINE_LAPTOP"
+
+    # Create two sets of doc directories
+    mkdir -p ai/docs .claude
+    echo "ai doc" > ai/docs/note.md
+    echo "claude doc" > .claude/note.md
+    mkdir -p other/docs
+    echo "other doc" > other/docs/note.md
+
+    # Set JJ_SYNC_DOCS to other/docs, but pass ai/docs inline
+    run env \
+        JJ_SYNC_USER="$TEST_USER" \
+        JJ_SYNC_MACHINE="$MACHINE_LAPTOP" \
+        JJ_SYNC_REMOTE="sync" \
+        JJ_SYNC_DOCS="other/docs" \
+        "$JJ_SYNC" push --docs ai/docs
+
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == *"Pushed"* ]]
+
+    # Pull on another machine — should only have ai/docs, not other/docs
+    cd_to_machine "$MACHINE_DEV1"
+    run env \
+        JJ_SYNC_USER="$TEST_USER" \
+        JJ_SYNC_MACHINE="$MACHINE_DEV1" \
+        JJ_SYNC_REMOTE="sync" \
+        JJ_SYNC_DOCS="ai/docs" \
+        "$JJ_SYNC" pull --docs
+
+    [[ "$status" -eq 0 ]]
+    assert_file_exists "ai/docs/note.md"
+    assert_file_not_exists "other/docs/note.md"
+}
+
+@test "V30: --docs with multiple inline dirs" {
+    cd_to_machine "$MACHINE_LAPTOP"
+
+    mkdir -p ai/docs .claude
+    echo "ai doc" > ai/docs/note.md
+    echo "claude doc" > .claude/note.md
+
+    run env -u JJ_SYNC_DOCS \
+        JJ_SYNC_USER="$TEST_USER" \
+        JJ_SYNC_MACHINE="$MACHINE_LAPTOP" \
+        JJ_SYNC_REMOTE="sync" \
+        "$JJ_SYNC" push --docs ai/docs .claude
+
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == *"Pushed"* ]]
+}
+
+@test "V31: --docs stops consuming at flags" {
+    cd_to_machine "$MACHINE_LAPTOP"
+
+    mkdir -p ai/docs
+    echo "doc" > ai/docs/note.md
+
+    # --dry-run should not be consumed as a directory
+    run env -u JJ_SYNC_DOCS \
+        JJ_SYNC_USER="$TEST_USER" \
+        JJ_SYNC_MACHINE="$MACHINE_LAPTOP" \
+        JJ_SYNC_REMOTE="sync" \
+        "$JJ_SYNC" push --docs ai/docs --dry-run
+
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == *"dry-run"* ]]
+}
+
+@test "V32: --docs with no inline args falls back to env var" {
+    cd_to_machine "$MACHINE_LAPTOP"
+
+    mkdir -p ai/docs
+    echo "doc" > ai/docs/note.md
+
+    run env \
+        JJ_SYNC_USER="$TEST_USER" \
+        JJ_SYNC_MACHINE="$MACHINE_LAPTOP" \
+        JJ_SYNC_REMOTE="sync" \
+        JJ_SYNC_DOCS="ai/docs" \
+        "$JJ_SYNC" push --docs
+
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == *"Pushed"* ]]
+}
+
+@test "V33: --docs with no inline args and no env var errors" {
+    cd_to_machine "$MACHINE_LAPTOP"
+
+    run env -u JJ_SYNC_DOCS \
+        JJ_SYNC_USER="$TEST_USER" \
+        JJ_SYNC_MACHINE="$MACHINE_LAPTOP" \
+        JJ_SYNC_REMOTE="sync" \
+        "$JJ_SYNC" push --docs
+
+    [[ "$status" -ne 0 ]]
+    [[ "$output" == *"No doc directories specified"* ]]
+    [[ "$output" == *"jj-sync push --docs ai/docs .claude"* ]]
+}
