@@ -228,7 +228,7 @@ teardown() {
 
     # Check that the merge commit has multiple parents
     local commit
-    commit=$(git ls-remote "$TEST_DIR/remote.git" "refs/jj-sync/sync/$MACHINE_DEV1/docs" 2>/dev/null | cut -f1)
+    commit=$(git ls-remote "$TEST_DIR/remote.git" "refs/jj-sync/sync/$TEST_USER/$MACHINE_DEV1/docs" 2>/dev/null | cut -f1)
     git fetch "$TEST_DIR/remote.git" "$commit" 2>/dev/null
 
     local parent_count

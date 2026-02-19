@@ -74,6 +74,7 @@ teardown() {
 
     # Run with explicitly empty JJ_SYNC_DOCS
     run env -u JJ_SYNC_DOCS \
+        JJ_SYNC_USER="$TEST_USER" \
         JJ_SYNC_MACHINE="$MACHINE_LAPTOP" \
         JJ_SYNC_REMOTE="sync" \
         "$JJ_SYNC" push --docs
@@ -87,6 +88,7 @@ teardown() {
 
     # Run with explicitly empty JJ_SYNC_DOCS
     run env -u JJ_SYNC_DOCS \
+        JJ_SYNC_USER="$TEST_USER" \
         JJ_SYNC_MACHINE="$MACHINE_LAPTOP" \
         JJ_SYNC_REMOTE="sync" \
         "$JJ_SYNC" push --both
@@ -120,6 +122,7 @@ teardown() {
 
     # Run with explicitly empty JJ_SYNC_DOCS
     run env JJ_SYNC_DOCS="" \
+        JJ_SYNC_USER="$TEST_USER" \
         JJ_SYNC_MACHINE="$MACHINE_LAPTOP" \
         JJ_SYNC_REMOTE="sync" \
         "$JJ_SYNC" push --docs
@@ -136,6 +139,7 @@ teardown() {
 
     # Push without setting JJ_SYNC_REMOTE — should auto-detect "sync" (the only remote)
     run env -u JJ_SYNC_REMOTE \
+        JJ_SYNC_USER="$TEST_USER" \
         JJ_SYNC_MACHINE="$MACHINE_LAPTOP" \
         "$JJ_SYNC" push
 
@@ -144,7 +148,7 @@ teardown() {
 
     # Verify bookmark was created
     local count
-    count=$(count_remote_bookmarks "sync/$MACHINE_LAPTOP/revs/*")
+    count=$(count_remote_bookmarks "sync/$TEST_USER/$MACHINE_LAPTOP/revs/*")
     [[ "$count" -eq 1 ]]
 }
 
@@ -158,6 +162,7 @@ teardown() {
 
     # Push without setting JJ_SYNC_REMOTE — should error
     run env -u JJ_SYNC_REMOTE \
+        JJ_SYNC_USER="$TEST_USER" \
         JJ_SYNC_MACHINE="$MACHINE_LAPTOP" \
         "$JJ_SYNC" push
 
@@ -177,6 +182,7 @@ teardown() {
     make_change "test.txt" "hello" "No-remote test"
 
     run env -u JJ_SYNC_REMOTE \
+        JJ_SYNC_USER="$TEST_USER" \
         JJ_SYNC_MACHINE="$MACHINE_LAPTOP" \
         "$JJ_SYNC" push
 
@@ -193,9 +199,98 @@ teardown() {
     make_change "test.txt" "hello" "Bad remote test"
 
     run env JJ_SYNC_REMOTE="nonexistent" \
+        JJ_SYNC_USER="$TEST_USER" \
         JJ_SYNC_MACHINE="$MACHINE_LAPTOP" \
         "$JJ_SYNC" push
 
     [[ "$status" -ne 0 ]]
     [[ "$output" == *"Remote 'nonexistent' not found"* ]]
+}
+
+@test "V13: User auto-detected from jj/git config" {
+    cd_to_machine "$MACHINE_LAPTOP"
+
+    # Run jj-sync status (which calls load_env) without JJ_SYNC_USER
+    # and verify it picks up a user identity
+    run env -u JJ_SYNC_USER \
+        JJ_SYNC_MACHINE="$MACHINE_LAPTOP" \
+        JJ_SYNC_REMOTE="sync" \
+        "$JJ_SYNC" status
+
+    [[ "$status" -eq 0 ]]
+    # Should NOT show "(not set)" for User — some email was detected
+    [[ "$output" != *"(not set)"* ]]
+    [[ "$output" == *"User:"* ]]
+}
+
+@test "V14: User override works" {
+    cd_to_machine "$MACHINE_LAPTOP"
+
+    (
+        export JJ_SYNC_USER="custom@user.com"
+        source "$PROJECT_ROOT/lib/env.sh"
+        load_env
+
+        [[ "$JJ_SYNC_USER" == "custom@user.com" ]]
+    )
+}
+
+@test "V15: User namespaces refs correctly" {
+    cd_to_machine "$MACHINE_LAPTOP"
+
+    make_change "test.txt" "hello" "User namespace test"
+
+    run_jj_sync "$MACHINE_LAPTOP" push
+
+    # Verify refs include user in path
+    local count
+    count=$(count_remote_bookmarks "sync/$TEST_USER/$MACHINE_LAPTOP/revs/*")
+    [[ "$count" -eq 1 ]]
+
+    # Verify old-style path does NOT exist
+    local old_count
+    old_count=$(count_remote_bookmarks "sync/$MACHINE_LAPTOP/revs/*")
+    [[ "$old_count" -eq 0 ]]
+}
+
+@test "V16: Different users don't clobber each other" {
+    cd_to_machine "$MACHINE_LAPTOP"
+
+    # User A pushes
+    make_change "test.txt" "user-a content" "User A change"
+    JJ_SYNC_USER="alice@example.com" run_jj_sync "$MACHINE_LAPTOP" push
+
+    # User B pushes (same machine, different user)
+    cd_to_machine "$MACHINE_DEV1"
+    make_change "test.txt" "user-b content" "User B change"
+    JJ_SYNC_USER="bob@example.com" run_jj_sync "$MACHINE_DEV1" push
+
+    # Both users' refs should exist
+    local alice_count bob_count
+    alice_count=$(count_remote_bookmarks "sync/alice@example.com/$MACHINE_LAPTOP/revs/*")
+    bob_count=$(count_remote_bookmarks "sync/bob@example.com/$MACHINE_DEV1/revs/*")
+    [[ "$alice_count" -eq 1 ]]
+    [[ "$bob_count" -eq 1 ]]
+}
+
+@test "V17: Pull only fetches current user's refs" {
+    # User A pushes from laptop
+    cd_to_machine "$MACHINE_LAPTOP"
+    make_change "test.txt" "alice content" "Alice change"
+    local alice_change
+    alice_change=$(get_current_change_id)
+    JJ_SYNC_USER="alice@example.com" run_jj_sync "$MACHINE_LAPTOP" push
+
+    # User B pushes from dev-1
+    cd_to_machine "$MACHINE_DEV1"
+    make_change "test2.txt" "bob content" "Bob change"
+    JJ_SYNC_USER="bob@example.com" run_jj_sync "$MACHINE_DEV1" push
+
+    # Pull as alice on dev-1 — should only get alice's refs
+    cd_to_machine "$MACHINE_DEV1"
+    JJ_SYNC_USER="alice@example.com" run_jj_sync "$MACHINE_DEV1" pull
+
+    # Alice's change should be visible
+    cd_to_machine "$MACHINE_DEV1"
+    jj_has_change "$alice_change"
 }

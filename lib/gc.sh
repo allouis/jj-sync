@@ -118,25 +118,25 @@ gc_docs() {
     done
 }
 
-# Remove ALL sync state - nuclear option
+# Remove sync state for the current user
 clean_all() {
-    log_info "Removing all sync state..."
+    log_info "Removing sync state for user '$JJ_SYNC_USER'..."
 
     detect_git_dir
 
-    # List all sync bookmarks on remote
+    # List sync bookmarks scoped to the current user
     local all_refs=()
     local ref
     while IFS= read -r ref; do
         [[ -n "$ref" ]] && all_refs+=("$ref")
-    done < <(list_remote_refs "${JJ_SYNC_PREFIX}/*")
+    done < <(list_remote_refs "${JJ_SYNC_PREFIX}/${JJ_SYNC_USER}/*")
 
     if [[ ${#all_refs[@]} -eq 0 ]]; then
         log_info "No sync state found on remote"
         return 0
     fi
 
-    log_warn "Found ${#all_refs[@]} sync bookmark(s) on remote"
+    log_warn "Found ${#all_refs[@]} sync bookmark(s) on remote for user '$JJ_SYNC_USER'"
 
     if is_dry_run; then
         log_info "[dry-run] Would delete:"
@@ -157,7 +157,7 @@ clean_all() {
     # Also clean up local refs
     while IFS= read -r ref; do
         [[ -n "$ref" ]] && delete_local_ref "$ref"
-    done < <(git_cmd branch --list "${JJ_SYNC_PREFIX}/*" 2>/dev/null | sed 's/^[* ]*//')
+    done < <(git_cmd branch --list "${JJ_SYNC_PREFIX}/${JJ_SYNC_USER}/*" 2>/dev/null | sed 's/^[* ]*//')
 
     jj git import --quiet 2>/dev/null || true
 
@@ -199,6 +199,7 @@ show_status() {
     else
         kv "Remote" "(not configured)"
     fi
+    kv "User" "${JJ_SYNC_USER:-(not set)}"
     kv "Machine" "$JJ_SYNC_MACHINE"
 
     # Local revisions
@@ -242,10 +243,11 @@ show_status() {
         log_info "Remote revisions:"
 
         # Group by machine
+        # Ref format: sync/<user>/<machine>/revs/<change_id>
         declare -A machine_counts
         for ref in "${remote_revs[@]}"; do
             local machine
-            machine=$(echo "$ref" | cut -d'/' -f2)
+            machine=$(echo "$ref" | cut -d'/' -f3)
             machine_counts[$machine]=$(( ${machine_counts[$machine]:-0} + 1 ))
         done
 

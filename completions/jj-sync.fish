@@ -19,6 +19,7 @@ complete -c jj-sync -l version -d 'Show version'
 complete -c jj-sync -l dry-run -d 'Show what would be done'
 complete -c jj-sync -l verbose -d 'Show verbose output'
 complete -c jj-sync -l remote -d 'Specify sync remote (auto-detected if one remote)' -xa '(__fish_git_remotes)'
+complete -c jj-sync -l user -d 'Specify user identity for ref namespacing'
 complete -c jj-sync -l machine -d 'Specify machine name'
 
 # Push/pull specific options

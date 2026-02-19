@@ -150,10 +150,11 @@ pull_revisions() {
     jj git export --quiet 2>/dev/null || true
 
     # Group by machine for display
+    # Ref format: sync/<user>/<machine>/revs/<change_id>
     declare -A machine_counts
     for ref in "${remote_refs[@]}"; do
         local machine
-        machine=$(echo "$ref" | cut -d'/' -f2)
+        machine=$(echo "$ref" | cut -d'/' -f3)
         machine_counts[$machine]=$(( ${machine_counts[$machine]:-0} + 1 ))
     done
 
@@ -173,5 +174,5 @@ list_sync_revisions() {
 
 # Count WIP revisions
 count_sync_revisions() {
-    jj log -r "$SYNC_REVSET" --no-graph -T 'change_id.short(12) ++ "\n"' 2>/dev/null | grep -c . || echo 0
+    jj log -r "$SYNC_REVSET" --no-graph -T 'change_id.short(12) ++ "\n"' 2>/dev/null | grep -c . || true
 }

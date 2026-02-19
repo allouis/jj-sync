@@ -42,16 +42,18 @@ jj git remote add personal <url>
 
 ### Namespace Convention
 
-All sync state lives under a `refs/jj-sync/` namespace, further namespaced by machine:
+All sync state lives under a `refs/jj-sync/` namespace, namespaced by user and machine:
 
 ```
-refs/jj-sync/sync/<machine>/revs/<change_id_prefix>   # WIP revisions
-refs/jj-sync/sync/<machine>/docs                       # gitignored doc files
+refs/jj-sync/sync/<user>/<machine>/revs/<change_id_prefix>   # WIP revisions
+refs/jj-sync/sync/<user>/<machine>/docs                       # gitignored doc files
 ```
 
 **Important**: We use `refs/jj-sync/` instead of regular git branches (`refs/heads/`) to avoid jj importing them as bookmarks. If synced commits were imported as bookmarks, jj would mark them as immutable, defeating the purpose of syncing WIP changes.
 
-The machine name is auto-detected from `hostname` and can be overridden via config.
+The user identity is resolved from `jj config get user.email`, `git config user.email`, or the `JJ_SYNC_USER` env var. The machine name is auto-detected from `hostname`. Both can be overridden via config or flags.
+
+The remote is auto-detected when the repo has exactly one git remote. If multiple remotes exist, the user must specify which one via `--remote` or `JJ_SYNC_REMOTE`.
 
 ---
 
@@ -226,8 +228,11 @@ All configuration is via environment variables. Set them in your shell profile (
 # Space-separated directories to sync as docs (required for --docs/--both)
 JJ_SYNC_DOCS="ai/docs .claude plans"
 
-# Which git remote to use for sync (default: personal)
-JJ_SYNC_REMOTE=personal
+# Which git remote to use for sync (auto-detected if repo has one remote)
+JJ_SYNC_REMOTE=origin
+
+# User identity for ref namespacing (default: jj/git user.email)
+JJ_SYNC_USER=you@example.com
 
 # Machine name override (default: $(hostname))
 JJ_SYNC_MACHINE=laptop
@@ -266,7 +271,8 @@ Flags:
                     Default (no flag): sync revisions only
 
 Options:
-  --remote <name>   Override sync remote
+  --remote <name>   Override sync remote (auto-detected if one remote)
+  --user <name>     Override user identity (default: jj/git user.email)
   --machine <name>  Override machine name
   --dry-run         Show what would happen without doing it
   --verbose         Show git plumbing commands as they run

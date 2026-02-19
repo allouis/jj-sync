@@ -22,7 +22,7 @@ teardown() {
 
     # Verify bookmark exists on remote
     local bookmark_count
-    bookmark_count=$(count_remote_bookmarks "sync/$MACHINE_LAPTOP/revs/*")
+    bookmark_count=$(count_remote_bookmarks "sync/$TEST_USER/$MACHINE_LAPTOP/revs/*")
     [[ "$bookmark_count" -eq 1 ]]
 }
 
@@ -69,7 +69,7 @@ teardown() {
 
     # Verify bookmarks still exist on remote (for other machines to pull)
     local bookmark_count
-    bookmark_count=$(count_remote_bookmarks "sync/$MACHINE_LAPTOP/revs/*")
+    bookmark_count=$(count_remote_bookmarks "sync/$TEST_USER/$MACHINE_LAPTOP/revs/*")
     [[ "$bookmark_count" -eq 1 ]]
 }
 
@@ -91,7 +91,7 @@ teardown() {
 
     # Should have 1 bookmark from laptop
     local laptop_count
-    laptop_count=$(count_remote_bookmarks "sync/$MACHINE_LAPTOP/revs/*")
+    laptop_count=$(count_remote_bookmarks "sync/$TEST_USER/$MACHINE_LAPTOP/revs/*")
     [[ "$laptop_count" -eq 1 ]]
 
     # Push from dev-1 (different changes)
@@ -100,9 +100,9 @@ teardown() {
     run_jj_sync "$MACHINE_DEV1" push
 
     # Should have 1 bookmark from each machine
-    laptop_count=$(count_remote_bookmarks "sync/$MACHINE_LAPTOP/revs/*")
+    laptop_count=$(count_remote_bookmarks "sync/$TEST_USER/$MACHINE_LAPTOP/revs/*")
     local dev_count
-    dev_count=$(count_remote_bookmarks "sync/$MACHINE_DEV1/revs/*")
+    dev_count=$(count_remote_bookmarks "sync/$TEST_USER/$MACHINE_DEV1/revs/*")
     [[ "$laptop_count" -eq 1 ]]
     [[ "$dev_count" -eq 1 ]]
 
@@ -114,6 +114,6 @@ teardown() {
     run_jj_sync "$MACHINE_LAPTOP" push
 
     # Laptop should now have 2 bookmarks (the pushed changes accumulate)
-    laptop_count=$(count_remote_bookmarks "sync/$MACHINE_LAPTOP/revs/*")
+    laptop_count=$(count_remote_bookmarks "sync/$TEST_USER/$MACHINE_LAPTOP/revs/*")
     [[ "$laptop_count" -eq 2 ]]
 }

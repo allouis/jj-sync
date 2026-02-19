@@ -6,7 +6,7 @@ _jj_sync() {
     _init_completion || return
 
     local commands="push pull status gc clean init help"
-    local global_opts="--help --version --dry-run --verbose --remote --machine --force"
+    local global_opts="--help --version --dry-run --verbose --remote --user --machine --force"
     local push_pull_opts="--docs --both"
 
     # Handle command completion

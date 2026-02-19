@@ -20,6 +20,7 @@ SYNC_MODE="revs"  # revs, docs, both
 
 # Override options
 OPT_REMOTE=""
+OPT_USER=""
 OPT_MACHINE=""
 
 usage() {
@@ -44,6 +45,7 @@ Flags:
 
 Options:
   --remote <name>   Override sync remote (default: auto-detected or \$JJ_SYNC_REMOTE)
+  --user <name>     Override user identity (default: jj/git user.email or \$JJ_SYNC_USER)
   --machine <name>  Override machine name (default: \$JJ_SYNC_MACHINE or hostname)
   --dry-run         Show what would happen without doing it
   --verbose         Show git/jj commands as they run
@@ -52,6 +54,7 @@ Options:
 Environment Variables:
   JJ_SYNC_DOCS              Space-separated directories to sync (required for --docs/--both)
   JJ_SYNC_REMOTE            Git remote name (auto-detected if repo has exactly one remote)
+  JJ_SYNC_USER              User identity for ref namespacing (default: jj/git user.email)
   JJ_SYNC_MACHINE           Machine identifier (default: hostname)
   JJ_SYNC_GC_REVS_DAYS      GC threshold for rev bookmarks (default: 7)
   JJ_SYNC_GC_DOCS_MAX_CHAIN GC threshold for doc chain length (default: 50)
@@ -84,6 +87,10 @@ main() {
                 ;;
             --remote)
                 OPT_REMOTE="$2"
+                shift 2
+                ;;
+            --user)
+                OPT_USER="$2"
                 shift 2
                 ;;
             --machine)
@@ -123,6 +130,7 @@ main() {
 
     # Apply overrides
     [[ -n "$OPT_REMOTE" ]] && JJ_SYNC_REMOTE="$OPT_REMOTE"
+    [[ -n "$OPT_USER" ]] && JJ_SYNC_USER=$(sanitize_for_ref "$OPT_USER")
     [[ -n "$OPT_MACHINE" ]] && JJ_SYNC_MACHINE="$OPT_MACHINE"
 
     # Validate docs env if needed
@@ -159,6 +167,7 @@ main() {
 cmd_push() {
     require_jj_repo
     require_remote
+    require_user
 
     case "$SYNC_MODE" in
         revs)
@@ -177,6 +186,7 @@ cmd_push() {
 cmd_pull() {
     require_jj_repo
     require_remote
+    require_user
 
     case "$SYNC_MODE" in
         revs)
@@ -200,6 +210,7 @@ cmd_status() {
 cmd_gc() {
     require_jj_repo
     require_remote
+    require_user
 
     gc_revisions
 
@@ -211,9 +222,10 @@ cmd_gc() {
 cmd_clean() {
     require_jj_repo
     require_remote
+    require_user
 
     if [[ "$FORCE" != "true" ]]; then
-        if ! confirm "This will delete ALL sync state locally and on remote. Continue?"; then
+        if ! confirm "This will delete all sync state for user '$JJ_SYNC_USER' locally and on remote. Continue?"; then
             log_info "Aborted."
             exit 0
         fi

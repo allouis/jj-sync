@@ -20,7 +20,7 @@ teardown() {
 
     # Verify bookmark exists
     local count_before
-    count_before=$(count_remote_bookmarks "sync/$MACHINE_LAPTOP/revs/*")
+    count_before=$(count_remote_bookmarks "sync/$TEST_USER/$MACHINE_LAPTOP/revs/*")
     [[ "$count_before" -eq 1 ]]
 
     # Run GC with 0-day threshold (should delete everything)
@@ -28,7 +28,7 @@ teardown() {
 
     # Verify bookmark is gone
     local count_after
-    count_after=$(count_remote_bookmarks "sync/$MACHINE_LAPTOP/revs/*")
+    count_after=$(count_remote_bookmarks "sync/$TEST_USER/$MACHINE_LAPTOP/revs/*")
     [[ "$count_after" -eq 0 ]]
 }
 
@@ -41,7 +41,7 @@ teardown() {
 
     # Verify bookmark exists
     local count_before
-    count_before=$(count_remote_bookmarks "sync/$MACHINE_LAPTOP/revs/*")
+    count_before=$(count_remote_bookmarks "sync/$TEST_USER/$MACHINE_LAPTOP/revs/*")
     [[ "$count_before" -eq 1 ]]
 
     # Run GC with 30-day threshold (should keep recent)
@@ -49,7 +49,7 @@ teardown() {
 
     # Verify bookmark still exists
     local count_after
-    count_after=$(count_remote_bookmarks "sync/$MACHINE_LAPTOP/revs/*")
+    count_after=$(count_remote_bookmarks "sync/$TEST_USER/$MACHINE_LAPTOP/revs/*")
     [[ "$count_after" -eq 1 ]]
 }
 
@@ -64,9 +64,9 @@ teardown() {
     done
 
     # Get chain length before
-    git fetch "$TEST_DIR/remote.git" "refs/jj-sync/sync/$MACHINE_LAPTOP/docs" 2>/dev/null
+    git fetch "$TEST_DIR/remote.git" "refs/jj-sync/sync/$TEST_USER/$MACHINE_LAPTOP/docs" 2>/dev/null
     local commit
-    commit=$(git ls-remote "$TEST_DIR/remote.git" "refs/jj-sync/sync/$MACHINE_LAPTOP/docs" | cut -f1)
+    commit=$(git ls-remote "$TEST_DIR/remote.git" "refs/jj-sync/sync/$TEST_USER/$MACHINE_LAPTOP/docs" | cut -f1)
     local chain_before
     chain_before=$(git rev-list --count "$commit" 2>/dev/null)
     [[ "$chain_before" -eq 5 ]]
@@ -75,8 +75,8 @@ teardown() {
     JJ_SYNC_GC_DOCS_MAX_CHAIN=3 run_jj_sync_with_docs "$MACHINE_LAPTOP" "ai/docs" gc
 
     # Get chain length after
-    git fetch "$TEST_DIR/remote.git" "refs/jj-sync/sync/$MACHINE_LAPTOP/docs" 2>/dev/null
-    commit=$(git ls-remote "$TEST_DIR/remote.git" "refs/jj-sync/sync/$MACHINE_LAPTOP/docs" | cut -f1)
+    git fetch "$TEST_DIR/remote.git" "refs/jj-sync/sync/$TEST_USER/$MACHINE_LAPTOP/docs" 2>/dev/null
+    commit=$(git ls-remote "$TEST_DIR/remote.git" "refs/jj-sync/sync/$TEST_USER/$MACHINE_LAPTOP/docs" | cut -f1)
     local chain_after
     chain_after=$(git rev-list --count "$commit" 2>/dev/null)
     [[ "$chain_after" -eq 1 ]]

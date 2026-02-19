@@ -30,11 +30,11 @@ teardown() {
     jj describe -m "Test in non-colocated repo" >/dev/null 2>&1
 
     # Push
-    JJ_SYNC_MACHINE="noncoloc" JJ_SYNC_REMOTE="sync" "$JJ_SYNC" push
+    JJ_SYNC_USER="$TEST_USER" JJ_SYNC_MACHINE="noncoloc" JJ_SYNC_REMOTE="sync" "$JJ_SYNC" push
 
     # Verify bookmark exists on remote
     local count
-    count=$(count_remote_bookmarks "sync/noncoloc/revs/*")
+    count=$(count_remote_bookmarks "sync/$TEST_USER/noncoloc/revs/*")
     [[ "$count" -eq 1 ]]
 }
 
@@ -42,7 +42,7 @@ teardown() {
     cd_to_machine "$MACHINE_LAPTOP"
 
     # Try to push with a non-existent remote
-    run env JJ_SYNC_MACHINE="$MACHINE_LAPTOP" JJ_SYNC_REMOTE="nonexistent" "$JJ_SYNC" push
+    run env JJ_SYNC_USER="$TEST_USER" JJ_SYNC_MACHINE="$MACHINE_LAPTOP" JJ_SYNC_REMOTE="nonexistent" "$JJ_SYNC" push
 
     # Should fail with clear error
     [[ "$status" -ne 0 ]]
@@ -55,7 +55,7 @@ teardown() {
     mkdir -p notarepo
     cd notarepo
 
-    run env JJ_SYNC_MACHINE="laptop" JJ_SYNC_REMOTE="sync" "$JJ_SYNC" push
+    run env JJ_SYNC_USER="$TEST_USER" JJ_SYNC_MACHINE="laptop" JJ_SYNC_REMOTE="sync" "$JJ_SYNC" push
 
     # Should fail with clear error
     [[ "$status" -ne 0 ]]
@@ -65,7 +65,7 @@ teardown() {
 @test "E4: Unknown command errors gracefully" {
     cd_to_machine "$MACHINE_LAPTOP"
 
-    run env JJ_SYNC_MACHINE="$MACHINE_LAPTOP" JJ_SYNC_REMOTE="sync" "$JJ_SYNC" unknown_command
+    run env JJ_SYNC_USER="$TEST_USER" JJ_SYNC_MACHINE="$MACHINE_LAPTOP" JJ_SYNC_REMOTE="sync" "$JJ_SYNC" unknown_command
 
     [[ "$status" -ne 0 ]]
     [[ "$output" =~ "Unknown" ]]
@@ -98,11 +98,11 @@ teardown() {
     make_change "test.txt" "content" "Test change"
 
     # Push with machine name containing special chars
-    JJ_SYNC_MACHINE="my@machine:with/special" JJ_SYNC_REMOTE="sync" "$JJ_SYNC" push
+    JJ_SYNC_USER="$TEST_USER" JJ_SYNC_MACHINE="my@machine:with/special" JJ_SYNC_REMOTE="sync" "$JJ_SYNC" push
 
     # Verify bookmark uses sanitized name
     local count
-    count=$(count_remote_bookmarks "sync/my_machine_with_special/revs/*")
+    count=$(count_remote_bookmarks "sync/$TEST_USER/my_machine_with_special/revs/*")
     [[ "$count" -eq 1 ]]
 }
 
@@ -224,6 +224,6 @@ teardown() {
 
     # Should have 2 bookmarks now
     local count
-    count=$(count_remote_bookmarks "sync/$MACHINE_LAPTOP/revs/*")
+    count=$(count_remote_bookmarks "sync/$TEST_USER/$MACHINE_LAPTOP/revs/*")
     [[ "$count" -eq 2 ]]
 }

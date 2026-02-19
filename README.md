@@ -38,10 +38,7 @@ cd jj-sync
 ## Quick Start
 
 ```bash
-# Add a sync remote to your jj repo
-jj git remote add sync git@github.com:you/myrepo-sync.git
-
-# Push your WIP changes
+# Push your WIP changes (remote auto-detected if repo has one remote)
 jj-sync push
 
 # On another machine, pull them
@@ -71,7 +68,8 @@ Flags:
             Default (no flag): sync revisions only
 
 Options:
-  --remote <name>   Override sync remote (default: $JJ_SYNC_REMOTE or 'sync')
+  --remote <name>   Override sync remote (default: auto-detected or $JJ_SYNC_REMOTE)
+  --user <name>     Override user identity (default: jj/git user.email or $JJ_SYNC_USER)
   --machine <name>  Override machine name (default: $JJ_SYNC_MACHINE or hostname)
   --dry-run         Show what would happen without doing it
   --verbose         Show git/jj commands as they run
@@ -79,7 +77,8 @@ Options:
 
 Environment Variables:
   JJ_SYNC_DOCS              Space-separated directories to sync (required for --docs/--both)
-  JJ_SYNC_REMOTE            Git remote name (default: sync)
+  JJ_SYNC_REMOTE            Git remote name (auto-detected if repo has exactly one remote)
+  JJ_SYNC_USER              User identity for ref namespacing (default: jj/git user.email)
   JJ_SYNC_MACHINE           Machine identifier (default: hostname)
   JJ_SYNC_GC_REVS_DAYS      GC threshold for rev bookmarks (default: 7)
   JJ_SYNC_GC_DOCS_MAX_CHAIN GC threshold for doc chain length (default: 50)

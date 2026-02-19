@@ -21,7 +21,7 @@ teardown() {
     run_jj_sync_with_docs "$MACHINE_LAPTOP" "ai/docs" push --docs
 
     # Verify docs bookmark exists on remote
-    assert_bookmark_exists_remote "sync/$MACHINE_LAPTOP/docs"
+    assert_bookmark_exists_remote "sync/$TEST_USER/$MACHINE_LAPTOP/docs"
 }
 
 @test "D2: Pull extracts docs" {
@@ -155,7 +155,7 @@ teardown() {
 
     # Get first commit
     local first_commit
-    first_commit=$(git ls-remote "$TEST_DIR/remote.git" "refs/jj-sync/sync/$MACHINE_LAPTOP/docs" | cut -f1)
+    first_commit=$(git ls-remote "$TEST_DIR/remote.git" "refs/jj-sync/sync/$TEST_USER/$MACHINE_LAPTOP/docs" | cut -f1)
 
     # Second push
     echo "version 2" > "ai/docs/doc.md"
@@ -163,7 +163,7 @@ teardown() {
 
     # Get second commit
     local second_commit
-    second_commit=$(git ls-remote "$TEST_DIR/remote.git" "refs/jj-sync/sync/$MACHINE_LAPTOP/docs" | cut -f1)
+    second_commit=$(git ls-remote "$TEST_DIR/remote.git" "refs/jj-sync/sync/$TEST_USER/$MACHINE_LAPTOP/docs" | cut -f1)
 
     # Verify different commits
     [[ "$first_commit" != "$second_commit" ]]

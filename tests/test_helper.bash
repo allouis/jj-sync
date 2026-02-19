@@ -18,6 +18,9 @@ MACHINE_LAPTOP="laptop"
 MACHINE_DEV1="dev-1"
 MACHINE_DEV2="dev-2"
 
+# User identity for testing
+TEST_USER="test@example.com"
+
 # ============================================================================
 # Setup / Teardown
 # ============================================================================
@@ -288,6 +291,7 @@ run_jj_sync() {
 
     cd "$TEST_DIR/$machine" || return 1
 
+    JJ_SYNC_USER="${JJ_SYNC_USER:-$TEST_USER}" \
     JJ_SYNC_MACHINE="${JJ_SYNC_MACHINE:-$machine}" \
     JJ_SYNC_REMOTE="${JJ_SYNC_REMOTE:-sync}" \
     JJ_SYNC_GC_REVS_DAYS="${JJ_SYNC_GC_REVS_DAYS:-7}" \
@@ -304,6 +308,7 @@ run_jj_sync_with_docs() {
 
     cd "$TEST_DIR/$machine" || return 1
 
+    JJ_SYNC_USER="${JJ_SYNC_USER:-$TEST_USER}" \
     JJ_SYNC_MACHINE="$machine" \
     JJ_SYNC_REMOTE="sync" \
     JJ_SYNC_DOCS="$docs_dirs" \
