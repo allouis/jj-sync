@@ -64,64 +64,83 @@ jj-sync pull
 Your changes show up in `jj log` as normal revisions. Use `--dry-run` to
 preview what would happen without changing anything.
 
-jj-sync auto-detects your remote if the repo has exactly one. If you have
-multiple remotes, set `JJ_SYNC_REMOTE` to tell it which one to use.
+For docs (AI context, local notes, anything gitignored):
+
+```bash
+jj-sync push --docs ai/docs .claude
+jj-sync pull --docs ai/docs .claude
+```
+
+jj-sync auto-detects your remote. If you have multiple remotes, it looks for
+`origin` or `upstream`. If it can't figure it out, it'll tell you what to do.
 
 ## Commands
 
-### `jj-sync push`
+```
+Usage: jj-sync <command> [options]
 
-Pushes your in-progress changes to the remote. Only non-empty, mutable,
-unpushed changes are synced (the revset is
-`mine() & ~empty() & ~immutable_heads() & ~trunk()`). Stale refs for
-abandoned or squashed changes are cleaned up automatically.
+Sync WIP jj revisions and gitignored docs across machines.
+(Doc sync works in any git repo; revision sync requires jj.)
 
-With `--docs`, pushes gitignored directories instead. With `--both`, pushes
-revisions and docs together.
+Commands:
+  push      Push to sync remote
+  pull      Pull from sync remote
+  status    Show what would be synced
+  gc        Garbage collect stale sync bookmarks and doc chains
+  clean     Remove ALL sync state (local + remote)
+  help      Show this help
 
-### `jj-sync pull`
+Flags:
+  --docs [dir...]  Sync docs only (dirs override JJ_SYNC_DOCS)
+  --both [dir...]  Sync revisions + docs (dirs override JJ_SYNC_DOCS)
+                   Default (no flag): sync revisions only
 
-Fetches WIP revisions from the remote and imports them into jj. The changes
-show up in `jj log` as normal revisions.
+Options:
+  --remote <name>   Override sync remote (default: auto-detected or $JJ_SYNC_REMOTE)
+  --user <name>     Override user identity (default: jj/git user.email or $JJ_SYNC_USER)
+  --machine <name>  Override machine name (default: $JJ_SYNC_MACHINE or hostname)
+  --dry-run         Show what would happen without doing it
+  --verbose         Show git/jj commands as they run
+  --force           Skip confirmation prompts
 
-With `--docs`, pulls and extracts doc directories. If multiple machines have
-pushed docs, they get merged automatically. Conflicts produce standard git
-conflict markers.
+Environment Variables:
+  JJ_SYNC_DOCS              Space-separated directories to sync (required for --docs/--both)
+  JJ_SYNC_REMOTE            Git remote name (auto-detected from origin/upstream)
+  JJ_SYNC_USER              User identity for ref namespacing (default: jj/git user.email)
+  JJ_SYNC_MACHINE           Machine identifier (default: hostname)
+  JJ_SYNC_GC_REVS_DAYS      GC threshold for rev bookmarks (default: 7)
+  JJ_SYNC_GC_DOCS_MAX_CHAIN GC threshold for doc chain length (default: 50)
 
-### `jj-sync status`
-
-Shows what would be synced: local revisions, what's on the remote, doc
-directory sizes, and current configuration.
-
-### `jj-sync gc`
-
-Cleans up old sync state. Revision refs older than 7 days get deleted. Doc
-commit chains longer than 50 get squashed down to one commit. Both thresholds
-are configurable (see [Configuration](#configuration)).
-
-### `jj-sync clean`
-
-Removes all sync state for the current user, both locally and on the remote.
-If anything gets into a weird state, `clean --force` wipes the slate and you
-can push again immediately.
-
-### `jj-sync init`
-
-Optional. Walks you through configuring the remote and machine name. You don't
-need to run this -- jj-sync works out of the box with sensible defaults.
+Examples:
+  jj-sync push                        # Push WIP revisions
+  jj-sync push --docs ai/docs .claude # Push specific doc directories
+  jj-sync push --both                 # Push revisions and docs
+  jj-sync pull --docs                 # Pull only docs
+  jj-sync status                      # Show sync status
+```
 
 ## Doc sync
 
 Some workflows produce files that are gitignored but still useful across
 machines -- AI context, local notes, generated docs. Doc sync handles these.
-Set `JJ_SYNC_DOCS` to a space-separated list of directories:
+
+Pass directories directly on the command line:
+
+```bash
+jj-sync push --docs ai/docs .claude
+jj-sync pull --docs ai/docs .claude
+```
+
+Or set `JJ_SYNC_DOCS` to avoid repeating them:
 
 ```bash
 export JJ_SYNC_DOCS="ai/docs .claude"
 
-jj-sync push --docs   # docs only
+jj-sync push --docs   # uses directories from JJ_SYNC_DOCS
 jj-sync push --both   # revisions + docs
 ```
+
+Inline arguments override the environment variable when both are present.
 
 Doc sync works in plain git repos too -- jj is only needed for revision sync.
 
@@ -177,8 +196,8 @@ Use `--verbose` to see the exact git commands. Check that the remote is
 reachable and you have write access.
 
 **Docs missing after pull:**
-Make sure `JJ_SYNC_DOCS` is set to the same directory names on both machines.
-Paths must match exactly (`ai/docs` vs `./ai/docs` are different).
+Make sure you're using the same directory names on both machines. Paths must
+match exactly (`ai/docs` vs `./ai/docs` are different).
 
 **Something is broken:**
 
@@ -192,8 +211,7 @@ jj-sync push           # start fresh
 - Revision sync is last-write-wins. If you amend the same change on two
   machines and push from both, the second push overwrites the first.
 - Doc sync merges on pull, not push. Conflicts show up as git conflict markers.
-- You can choose revisions, docs, or both, but you can't sync a subset of
-  revisions or a single doc directory.
+- You can't sync a subset of revisions.
 - Directory names in `JJ_SYNC_DOCS` can't contain spaces.
 
 ## License
