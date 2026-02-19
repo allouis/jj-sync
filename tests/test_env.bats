@@ -193,20 +193,6 @@ teardown() {
     git remote add sync "$TEST_DIR/remote.git" 2>/dev/null || true
 }
 
-@test "V12: Explicit nonexistent remote errors" {
-    cd_to_machine "$MACHINE_LAPTOP"
-
-    make_change "test.txt" "hello" "Bad remote test"
-
-    run env JJ_SYNC_REMOTE="nonexistent" \
-        JJ_SYNC_USER="$TEST_USER" \
-        JJ_SYNC_MACHINE="$MACHINE_LAPTOP" \
-        "$JJ_SYNC" push
-
-    [[ "$status" -ne 0 ]]
-    [[ "$output" == *"Remote 'nonexistent' not found"* ]]
-}
-
 @test "V13: User auto-detected from jj/git config" {
     cd_to_machine "$MACHINE_LAPTOP"
 

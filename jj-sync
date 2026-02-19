@@ -674,7 +674,7 @@ push_revisions() {
                 commit_sha=$(jj log -r "$change_id" --no-graph -T 'commit_id' 2>/dev/null) || continue
 
                 verbose "Pushing: $bookmark ($commit_sha)"
-                git_cmd push "$JJ_SYNC_REMOTE" "$commit_sha:refs/jj-sync/$bookmark" 2>/dev/null || {
+                git_cmd push "$JJ_SYNC_REMOTE" "+$commit_sha:refs/jj-sync/$bookmark" 2>/dev/null || {
                     log_warn "Failed to push bookmark: $bookmark"
                 }
             done
