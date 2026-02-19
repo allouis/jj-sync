@@ -1,270 +1,200 @@
 # jj-sync
 
-Sync WIP jj revisions and gitignored docs across multiple development machines using a private git remote.
+Sync WIP jj revisions and gitignored docs across machines via any git remote.
 
-## Installation
+## Requirements
 
-### Nix Flakes
+- bash 4.0+ (macOS ships 3.2 -- `brew install bash` and make sure `bash --version` shows 4.0+)
+- git 2.38+
+- jj -- only needed for revision sync, not doc sync
+
+## Install
+
+jj-sync is a single bash script.
+
+**Copy the script:**
 
 ```bash
-# Run directly
-nix run github:allouis/jj-sync
+curl -o ~/.local/bin/jj-sync https://raw.githubusercontent.com/allouis/jj-sync/main/jj-sync
+chmod +x ~/.local/bin/jj-sync
+```
 
-# Or install to your profile
+**Clone and install:**
+
+```bash
+git clone https://github.com/allouis/jj-sync
+cd jj-sync
+./install.sh  # copies to ~/.local/bin
+```
+
+<details>
+<summary>Nix flake</summary>
+
+```bash
 nix profile install github:allouis/jj-sync
 ```
 
-To add to a NixOS/home-manager config:
+Or add to your NixOS/home-manager config:
 
 ```nix
 {
   inputs.jj-sync.url = "github:allouis/jj-sync";
 }
 
-# Then in your config:
-environment.systemPackages = [ inputs.jj-sync.packages.${system}.default ];
-# or for home-manager:
+# Then:
 home.packages = [ inputs.jj-sync.packages.${system}.default ];
 ```
 
-### Manual
+</details>
+
+## Quick start
+
+On your laptop:
 
 ```bash
-git clone https://github.com/allouis/jj-sync
-cd jj-sync
-./install.sh  # installs to ~/.local/bin
-```
-
-## Quick Start
-
-jj-sync uses an existing git remote — no extra server required. If your repo
-has exactly one remote, it's auto-detected. Otherwise, set `JJ_SYNC_REMOTE`:
-
-```bash
-# If your repo has multiple remotes, tell jj-sync which one to use
-export JJ_SYNC_REMOTE="origin"
-
-# Push your WIP changes
 jj-sync push
+```
 
-# On another machine, pull them
+On your other machine:
+
+```bash
 jj-sync pull
-
-# See what would be synced
-jj-sync status
 ```
 
-## Usage
+Your changes show up in `jj log` as normal revisions. Use `--dry-run` to
+preview what would happen without changing anything.
 
-```
-$ jj-sync --help
-Usage: jj-sync <command> [options]
+jj-sync auto-detects your remote if the repo has exactly one. If you have
+multiple remotes, set `JJ_SYNC_REMOTE` to tell it which one to use.
 
-Sync WIP jj revisions and gitignored docs across machines.
+## Commands
 
-Commands:
-  push      Push to sync remote
-  pull      Pull from sync remote
-  status    Show what would be synced
-  gc        Garbage collect stale sync bookmarks and doc chains
-  clean     Remove ALL sync state (local + remote)
-  init      Interactive setup: configure remote, machine name
-  help      Show this help
+### `jj-sync push`
 
-Flags:
-  --docs    Sync docs only (requires JJ_SYNC_DOCS)
-  --both    Sync revisions + docs (requires JJ_SYNC_DOCS)
-            Default (no flag): sync revisions only
+Pushes your in-progress changes to the remote. Only non-empty, mutable,
+unpushed changes are synced (the revset is
+`mine() & ~empty() & ~immutable_heads() & ~trunk()`). Stale refs for
+abandoned or squashed changes are cleaned up automatically.
 
-Options:
-  --remote <name>   Override sync remote (default: auto-detected or $JJ_SYNC_REMOTE)
-  --user <name>     Override user identity (default: jj/git user.email or $JJ_SYNC_USER)
-  --machine <name>  Override machine name (default: $JJ_SYNC_MACHINE or hostname)
-  --dry-run         Show what would happen without doing it
-  --verbose         Show git/jj commands as they run
-  --force           Skip confirmation prompts
+With `--docs`, pushes gitignored directories instead. With `--both`, pushes
+revisions and docs together.
 
-Environment Variables:
-  JJ_SYNC_DOCS              Space-separated directories to sync (required for --docs/--both)
-  JJ_SYNC_REMOTE            Git remote name (auto-detected if repo has exactly one remote)
-  JJ_SYNC_USER              User identity for ref namespacing (default: jj/git user.email)
-  JJ_SYNC_MACHINE           Machine identifier (default: hostname)
-  JJ_SYNC_GC_REVS_DAYS      GC threshold for rev bookmarks (default: 7)
-  JJ_SYNC_GC_DOCS_MAX_CHAIN GC threshold for doc chain length (default: 50)
-```
+### `jj-sync pull`
 
-## Doc Sync
+Fetches WIP revisions from the remote and imports them into jj. The changes
+show up in `jj log` as normal revisions.
 
-To sync gitignored directories (AI docs, notes, etc.), set `JJ_SYNC_DOCS`:
+With `--docs`, pulls and extracts doc directories. If multiple machines have
+pushed docs, they get merged automatically. Conflicts produce standard git
+conflict markers.
+
+### `jj-sync status`
+
+Shows what would be synced: local revisions, what's on the remote, doc
+directory sizes, and current configuration.
+
+### `jj-sync gc`
+
+Cleans up old sync state. Revision refs older than 7 days get deleted. Doc
+commit chains longer than 50 get squashed down to one commit. Both thresholds
+are configurable (see [Configuration](#configuration)).
+
+### `jj-sync clean`
+
+Removes all sync state for the current user, both locally and on the remote.
+If anything gets into a weird state, `clean --force` wipes the slate and you
+can push again immediately.
+
+### `jj-sync init`
+
+Optional. Walks you through configuring the remote and machine name. You don't
+need to run this -- jj-sync works out of the box with sensible defaults.
+
+## Doc sync
+
+Some workflows produce files that are gitignored but still useful across
+machines -- AI context, local notes, generated docs. Doc sync handles these.
+Set `JJ_SYNC_DOCS` to a space-separated list of directories:
 
 ```bash
 export JJ_SYNC_DOCS="ai/docs .claude"
 
-jj-sync push --docs   # sync docs only
-jj-sync push --both   # sync revisions + docs
+jj-sync push --docs   # docs only
+jj-sync push --both   # revisions + docs
 ```
 
-## Plain Git Support
+Doc sync works in plain git repos too -- jj is only needed for revision sync.
 
-Doc sync works in any git repository — jj is not required. This is useful for
-syncing gitignored directories in projects that don't use jj.
+## How it works
 
-Revision sync still requires jj.
+jj-sync stores everything in git refs under `refs/jj-sync/` on the remote.
+These refs don't show up as bookmarks or branches in jj, and git ignores them
+too. They're completely separate from your normal workflow.
 
-## How It Works
-
-jj-sync stores all sync state in git refs under a `refs/jj-sync/` namespace on
-the remote. It never touches your branches, bookmarks, or working tree (except
-for doc extraction). This makes it safe to use alongside normal git/jj workflows.
-
-### Ref Namespace
-
-All refs follow the pattern:
+The ref structure:
 
 ```
-refs/jj-sync/sync/<user>/<machine>/revs/<change-id>   # revision bookmarks
-refs/jj-sync/sync/<user>/<machine>/docs                # doc commit chain
+refs/jj-sync/sync/<user>/<machine>/revs/<change-id>
+refs/jj-sync/sync/<user>/<machine>/docs
 ```
 
-- **User** — defaults to your `jj`/`git` `user.email`, namespaces refs so
-  multiple people sharing a remote don't clobber each other.
-- **Machine** — defaults to your hostname, lets you sync between your own
-  machines while keeping their states separate.
+Refs are namespaced by user email and machine hostname, so multiple people (or
+machines) sharing the same remote don't step on each other.
 
-### Revision Sync
+For revisions, jj-sync pushes commit SHAs directly to these refs and fetches
+them back with `jj git import`. For docs, it stores file snapshots as git
+commits and extracts them on pull.
 
-On **push**, jj-sync evaluates the revset:
+## Configuration
 
-```
-mine() & ~empty() & ~immutable_heads() & ~trunk()
-```
+| Variable | Default | Description |
+|---|---|---|
+| `JJ_SYNC_REMOTE` | auto-detected | Git remote to sync with |
+| `JJ_SYNC_USER` | auto-detected from jj or git config | Namespaces refs per user |
+| `JJ_SYNC_MACHINE` | hostname | Namespaces refs per machine |
+| `JJ_SYNC_DOCS` | (unset) | Space-separated directories for doc sync |
+| `JJ_SYNC_GC_REVS_DAYS` | 7 | Delete revision refs older than this |
+| `JJ_SYNC_GC_DOCS_MAX_CHAIN` | 50 | Squash doc chains longer than this |
 
-This selects your WIP changes — authored by you, non-empty, not yet pushed to a
-public branch, and not on trunk. For each matching change, it pushes the commit
-SHA directly via `git push` to `refs/jj-sync/...`. Stale bookmarks (for
-abandoned or squashed changes) are deleted automatically.
-
-On **pull**, jj-sync fetches all `refs/jj-sync/.../revs/*` refs for the current
-user, creates temporary local refs so jj can see the commits, runs `jj git
-import`, then cleans up the temporary refs. The commits appear in your jj log
-as normal revisions.
-
-Revisions are pushed with force (`+` prefix) so amended changes are always
-updated, even when the commit SHA changes non-fast-forward.
-
-### Doc Sync
-
-Doc sync uses git's object model to store directory snapshots without involving
-jj at all. This is why it works in plain git repos too.
-
-On **push**, jj-sync:
-
-1. Builds a git tree object from the files in your `JJ_SYNC_DOCS` directories
-   using a temporary `GIT_INDEX_FILE` (isolated in a subshell to avoid leaks).
-2. Creates a commit object with that tree, parenting it on the previous doc
-   commit from this machine (building a linear chain).
-3. Force-pushes the commit to `refs/jj-sync/.../docs`.
-
-On **pull**, jj-sync:
-
-1. Fetches all doc refs for the current user (from all machines).
-2. If there's a single source, uses it directly.
-3. If there are multiple sources (multiple machines pushed docs), merges them:
-   - With a common ancestor: three-way merge via `git merge-tree`.
-   - Without a common ancestor: union merge (combines both trees).
-   - Conflicts are included in files with standard conflict markers.
-4. Extracts the final tree to a **staging directory** first, then replaces
-   existing files only after extraction succeeds — protecting against data loss
-   if extraction fails.
-
-### Garbage Collection
-
-`jj-sync gc` cleans up stale state on the remote:
-
-- **Revision bookmarks** older than `JJ_SYNC_GC_REVS_DAYS` (default: 7) are
-  deleted. Recent bookmarks are kept.
-- **Doc commit chains** longer than `JJ_SYNC_GC_DOCS_MAX_CHAIN` (default: 50)
-  are squashed to a single commit preserving the latest content. This prevents
-  unbounded growth in the remote.
-
-### Escape Hatch
-
-If sync state gets corrupted, `jj-sync clean` removes all `refs/jj-sync/` refs
-for the current user from both the local repo and the remote. This is a full
-reset — you can push again immediately after.
-
-You can also inspect the raw refs with:
-
-```bash
-git ls-remote <remote> 'refs/jj-sync/*'
-```
-
-## Requirements
-
-- **bash ≥ 4.0** — uses associative arrays. macOS ships bash 3.2; install a
-  newer version via Homebrew (`brew install bash`) or use the Nix flake.
-- **git ≥ 2.38** — uses `git merge-tree --write-tree` for doc merging.
-- **jj (jujutsu)** — only required for revision sync, not for doc sync.
-
-## Limitations
-
-- **Revision sync is last-write-wins per change.** If you amend the same change
-  on two machines and push from both, the second push overwrites the first.
-  There's no merge or conflict detection for revisions — each change ID maps to
-  exactly one commit SHA on the remote.
-
-- **Doc sync merges on pull, not push.** Each machine maintains its own linear
-  chain of doc commits. Merging happens when pulling on a machine that sees
-  multiple sources. Conflicts produce standard git conflict markers in the
-  affected files.
-
-- **No partial sync.** Push and pull operate on all WIP changes or all doc
-  directories at once. You can't sync a subset.
-
-- **Spaces in doc directory names are not supported.** `JJ_SYNC_DOCS` is
-  space-separated, so directory names containing spaces won't be parsed
-  correctly.
+Command-line flags (`--remote`, `--user`, `--machine`) override the
+corresponding variables. Use `--verbose` on any command to see the git/jj
+commands being run. Use `--dry-run` to preview without making changes.
 
 ## Troubleshooting
 
-**See what jj-sync knows about:**
-
-```bash
-jj-sync status           # shows revisions, docs, config
-jj-sync status --verbose # includes ref details
-```
-
-**Inspect raw refs on the remote:**
+**Inspect sync state on the remote:**
 
 ```bash
 git ls-remote <remote> 'refs/jj-sync/*'
 ```
 
-**Nothing to push — but I have changes:**
+**"No WIP revisions to push" but I have changes:**
+Check that your changes aren't empty, aren't on a pushed branch, and are
+authored by the email in your current `user.email` config.
 
-jj-sync uses the revset `mine() & ~empty() & ~immutable_heads() & ~trunk()`.
-Your changes might be excluded because they're empty, immutable (already pushed
-to a branch), on trunk, or authored by a different email than your current
-`user.email` config.
+**Push fails:**
+Use `--verbose` to see the exact git commands. Check that the remote is
+reachable and you have write access.
 
-**Push fails with "Failed to push bookmark":**
+**Docs missing after pull:**
+Make sure `JJ_SYNC_DOCS` is set to the same directory names on both machines.
+Paths must match exactly (`ai/docs` vs `./ai/docs` are different).
 
-Check that the remote is reachable and you have write access. Use `--verbose` to
-see the exact git commands being run.
-
-**Docs are missing after pull:**
-
-Verify `JJ_SYNC_DOCS` is set to the same directory names on both machines. The
-directories must match exactly — `ai/docs` and `./ai/docs` are different.
-
-**Full reset:**
+**Something is broken:**
 
 ```bash
-jj-sync clean --force  # removes all refs/jj-sync/ state for current user
+jj-sync clean --force  # wipes all sync state for current user
+jj-sync push           # start fresh
 ```
 
-This deletes all sync bookmarks from both the local repo and the remote. You can
-push again immediately after.
+## Limitations
+
+- Revision sync is last-write-wins. If you amend the same change on two
+  machines and push from both, the second push overwrites the first.
+- Doc sync merges on pull, not push. Conflicts show up as git conflict markers.
+- You can choose revisions, docs, or both, but you can't sync a subset of
+  revisions or a single doc directory.
+- Directory names in `JJ_SYNC_DOCS` can't contain spaces.
 
 ## License
 
