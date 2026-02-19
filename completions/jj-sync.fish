@@ -10,7 +10,6 @@ complete -c jj-sync -n __fish_use_subcommand -a pull -d 'Pull WIP revisions and/
 complete -c jj-sync -n __fish_use_subcommand -a status -d 'Show sync status'
 complete -c jj-sync -n __fish_use_subcommand -a gc -d 'Garbage collect old bookmarks'
 complete -c jj-sync -n __fish_use_subcommand -a clean -d 'Remove all sync state'
-complete -c jj-sync -n __fish_use_subcommand -a init -d 'Initialize jj-sync'
 complete -c jj-sync -n __fish_use_subcommand -a help -d 'Show help'
 
 # Global options

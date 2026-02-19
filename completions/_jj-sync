@@ -12,7 +12,6 @@ _jj_sync() {
         'status:Show sync status'
         'gc:Garbage collect old bookmarks'
         'clean:Remove all sync state (requires --force)'
-        'init:Initialize jj-sync for this repository'
         'help:Show help message'
     )
 
@@ -53,7 +52,7 @@ _jj_sync() {
                         "${global_opts[@]}" \
                         '--force[Force operation without confirmation]'
                     ;;
-                status|init|help)
+                status|help)
                     _arguments "${global_opts[@]}"
                     ;;
             esac

@@ -1404,79 +1404,6 @@ show_status() {
     fi
 }
 
-# Interactive setup
-init_setup() {
-    section "jj-sync init"
-
-    # Check prerequisites
-    log_info "Checking prerequisites..."
-
-    # Check git version
-    local git_version
-    git_version=$(git --version | grep -oE '[0-9]+\.[0-9]+' | head -1)
-    local git_major git_minor
-    git_major=$(echo "$git_version" | cut -d. -f1)
-    git_minor=$(echo "$git_version" | cut -d. -f2)
-
-    if [[ "$git_major" -lt 2 ]] || { [[ "$git_major" -eq 2 ]] && [[ "$git_minor" -lt 38 ]]; }; then
-        die "git version must be >= 2.38 (found $git_version)"
-    fi
-    list_item "git $git_version ✓"
-
-    # Check jj (optional — only needed for revision sync)
-    if command -v jj &>/dev/null; then
-        local jj_version
-        jj_version=$(jj --version | head -1)
-        list_item "$jj_version ✓"
-
-        if jj root &>/dev/null; then
-            list_item "jj repository ✓"
-        else
-            list_item "jj installed but not in a jj repo (revision sync unavailable)"
-        fi
-    else
-        list_item "jj not installed (revision sync unavailable, doc sync works)"
-    fi
-
-    # Check we're in a git repo
-    if ! detect_git_dir; then
-        die "Not in a git repository"
-    fi
-    list_item "git repository ✓"
-
-    echo ""
-
-    # Check if remote already exists
-    local remote="${JJ_SYNC_REMOTE:-origin}"
-    if git remote get-url "$remote" &>/dev/null; then
-        local url
-        url=$(git remote get-url "$remote")
-        log_info "Remote '$remote' already configured: $url"
-    else
-        log_info "Remote '$remote' not found."
-        echo ""
-        echo "To complete setup, add a personal remote:"
-        echo ""
-        echo "  jj git remote add $remote <your-remote-url>"
-        echo ""
-        echo "Example:"
-        echo "  jj git remote add $remote git@github.com:username/repo-sync.git"
-    fi
-
-    echo ""
-    log_info "Environment variables to set in your shell profile:"
-    echo ""
-    echo "  # Required for doc sync"
-    echo "  export JJ_SYNC_DOCS=\"ai/docs .claude\""
-    echo ""
-    echo "  # Optional overrides"
-    echo "  export JJ_SYNC_REMOTE=\"$remote\""
-    echo "  export JJ_SYNC_MACHINE=\"$(hostname)\""
-    echo ""
-
-    log_success "Setup complete!"
-}
-
 # === Command Dispatch ===
 
 usage() {
@@ -1492,7 +1419,6 @@ Commands:
   status    Show what would be synced
   gc        Garbage collect stale sync bookmarks and doc chains
   clean     Remove ALL sync state (local + remote)
-  init      Interactive setup: configure remote, machine name
   help      Show this help
 
 Flags:
@@ -1530,7 +1456,7 @@ main() {
     # Parse arguments (must be done in main, not subshell, to preserve globals)
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            push|pull|status|gc|clean|init|help)
+            push|pull|status|gc|clean|help)
                 cmd="$1"
                 shift
                 ;;
@@ -1614,9 +1540,6 @@ main() {
             ;;
         clean)
             cmd_clean
-            ;;
-        init)
-            cmd_init
             ;;
         *)
             die "Unknown command: $cmd"
@@ -1702,10 +1625,6 @@ cmd_clean() {
     fi
 
     clean_all
-}
-
-cmd_init() {
-    init_setup
 }
 
 # Only run main when executed directly (not when sourced for testing)

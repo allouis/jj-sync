@@ -5,7 +5,7 @@ _jj_sync() {
     local cur prev words cword
     _init_completion || return
 
-    local commands="push pull status gc clean init help"
+    local commands="push pull status gc clean help"
     local global_opts="--help --version --dry-run --verbose --remote --user --machine --force"
     local push_pull_opts="--docs --both"
 
@@ -24,7 +24,7 @@ _jj_sync() {
         gc|clean)
             COMPREPLY=($(compgen -W "--force $global_opts" -- "$cur"))
             ;;
-        status|init|help)
+        status|help)
             COMPREPLY=($(compgen -W "$global_opts" -- "$cur"))
             ;;
         --remote)
