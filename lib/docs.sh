@@ -286,17 +286,33 @@ pull_docs() {
         fi
     done <<< "$tree_files"
 
-    # Remove existing files in doc directories (to handle deletions)
+    # Extract to a staging directory first to avoid data loss if extraction fails
+    local staging_dir
+    staging_dir=$(mktemp -d)
+    # shellcheck disable=SC2064
+    trap "rm -rf '$staging_dir'" RETURN
+
+    verbose "Extracting docs to staging directory"
+    if ! extract_tree "$final_commit" "$staging_dir"; then
+        die "Failed to extract docs — existing files left untouched"
+    fi
+
+    # Extraction succeeded — now safe to replace old files
     for dir in "${doc_dirs[@]}"; do
         if [[ -d "$dir" ]]; then
             verbose "Cleaning existing files in $dir"
-            find "$dir" -type f -delete 2>/dev/null || true
+            find "$dir" -type f -delete 2>/dev/null || log_warn "Failed to delete some files in $dir"
         fi
     done
 
-    # Extract the docs to working directory
-    verbose "Extracting docs to working directory"
-    extract_tree "$final_commit" "."
+    # Move extracted files into place
+    verbose "Moving extracted docs to working directory"
+    for dir in "${doc_dirs[@]}"; do
+        if [[ -d "$staging_dir/$dir" ]]; then
+            mkdir -p "$dir"
+            cp -R "$staging_dir/$dir/." "$dir/"
+        fi
+    done
 
     # If we merged, push the merged state as our new docs
     if [[ ${#docs_commits[@]} -gt 1 ]]; then

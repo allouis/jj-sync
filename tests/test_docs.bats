@@ -203,3 +203,44 @@ teardown() {
     assert_file_exists "ai/docs/keep.md"
     assert_file_not_exists "ai/docs/delete.md"
 }
+
+@test "D12: Failed extraction leaves existing files untouched" {
+    # Push docs from laptop
+    cd_to_machine "$MACHINE_LAPTOP"
+    create_doc_dir "ai/docs" 2
+    run_jj_sync_with_docs "$MACHINE_LAPTOP" "ai/docs" push --docs
+
+    # Pull on dev-1 to get the docs
+    cd_to_machine "$MACHINE_DEV1"
+    run_jj_sync_with_docs "$MACHINE_DEV1" "ai/docs" pull --docs
+    assert_file_exists "ai/docs/doc1.md"
+
+    # Add a local-only file that shouldn't be lost
+    echo "precious local content" > "ai/docs/local-only.md"
+
+    # Sabotage extract_tree by creating a commit with a blob, then deleting
+    # the blob from the object store so git archive fails
+    local blob_sha
+    blob_sha=$(echo "throwaway" | git -C "$TEST_DIR/remote.git" hash-object -w --stdin)
+    local tree_sha
+    tree_sha=$(printf "100644 blob %s\tfake.md\n" "$blob_sha" \
+        | git -C "$TEST_DIR/remote.git" mktree)
+    local commit_sha
+    commit_sha=$(git -C "$TEST_DIR/remote.git" commit-tree "$tree_sha" -m "corrupt")
+    git -C "$TEST_DIR/remote.git" update-ref \
+        "refs/jj-sync/sync/$TEST_USER/$MACHINE_LAPTOP/docs" "$commit_sha"
+
+    # Delete the blob object so git archive will fail
+    local blob_prefix="${blob_sha:0:2}"
+    local blob_suffix="${blob_sha:2}"
+    rm "$TEST_DIR/remote.git/objects/$blob_prefix/$blob_suffix"
+
+    # Pull should fail but not destroy existing files
+    run run_jj_sync_with_docs "$MACHINE_DEV1" "ai/docs" pull --docs
+    [[ "$status" -ne 0 ]]
+
+    # Existing files must still be intact
+    assert_file_exists "ai/docs/doc1.md"
+    assert_file_exists "ai/docs/local-only.md"
+    assert_file_equals "ai/docs/local-only.md" "precious local content"
+}
