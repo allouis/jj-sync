@@ -119,7 +119,7 @@ push_docs() {
     docs_bookmark=$(get_docs_bookmark)
 
     # Fetch from remote to see latest state
-    fetch_remote 2>/dev/null || true
+    fetch_remote 2>/dev/null || log_warn "Failed to fetch from remote (will create orphan commit)"
 
     # Try to get OUR OWN previous docs commit (for parent chain)
     # Each machine maintains its own independent doc chain - merge happens on pull
@@ -178,7 +178,7 @@ pull_docs() {
     # Fetch from remote first
     verbose "Fetching from $JJ_SYNC_REMOTE"
     if ! is_dry_run; then
-        fetch_remote 2>/dev/null || true
+        fetch_remote 2>/dev/null || log_warn "Failed to fetch from remote (may show stale state)"
     fi
 
     # Get the glob pattern for all machines' docs bookmarks

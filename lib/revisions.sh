@@ -135,13 +135,18 @@ pull_revisions() {
             verbose "Fetching: $ref ($commit)"
             # Create a temporary local branch so jj git import can see the commit
             local temp_bookmark="jj-sync-import/${ref//\//-}"
-            git_cmd fetch "$JJ_SYNC_REMOTE" "$commit:refs/heads/$temp_bookmark" 2>/dev/null || true
+            git_cmd fetch "$JJ_SYNC_REMOTE" "$commit:refs/heads/$temp_bookmark" 2>/dev/null || {
+                log_warn "Failed to fetch commit $commit for $ref"
+                continue
+            }
             temp_bookmarks+=("$temp_bookmark")
         fi
     done
 
     # Import the fetched commits into jj (jj sees refs/heads/* as bookmarks)
-    jj git import --quiet 2>/dev/null || true
+    if ! jj git import --quiet 2>/dev/null; then
+        die "Failed to import fetched commits into jj"
+    fi
 
     # Clean up temporary bookmarks (jj has already seen the commits)
     for temp_bookmark in "${temp_bookmarks[@]}"; do

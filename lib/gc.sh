@@ -8,7 +8,7 @@ gc_revisions() {
     detect_git_dir
 
     # Fetch from remote first to get current state
-    fetch_remote 2>/dev/null || true
+    fetch_remote 2>/dev/null || log_warn "Failed to fetch from remote (GC may use stale state)"
 
     local all_revs_glob
     all_revs_glob=$(get_all_revs_glob)
@@ -160,7 +160,7 @@ clean_all() {
     done < <(git_cmd branch --list "${JJ_SYNC_PREFIX}/${JJ_SYNC_USER}/*" 2>/dev/null | sed 's/^[* ]*//')
 
     if is_jj_repo; then
-        jj git import --quiet 2>/dev/null || true
+        jj git import --quiet 2>/dev/null || log_warn "Failed to import into jj after cleanup"
     fi
 
     log_success "Deleted $deleted sync bookmark(s)"

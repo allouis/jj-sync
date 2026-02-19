@@ -154,7 +154,7 @@ create_tree_from_files() {
                 # Find all files and add them
                 while IFS= read -r -d '' file; do
                     # Add file to index, bypassing .gitignore with -f
-                    git_cmd add -f "$file" 2>/dev/null || true
+                    git_cmd add -f "$file" 2>/dev/null || log_warn "Failed to add file: $file"
                 done < <(find "$dir" -type f -print0)
             fi
         done
@@ -254,7 +254,7 @@ get_remote_commit() {
 
     if [[ -n "$commit" ]]; then
         # Fetch the commit object
-        git_cmd fetch "$JJ_SYNC_REMOTE" "$commit" 2>/dev/null || true
+        git_cmd fetch "$JJ_SYNC_REMOTE" "$commit" 2>/dev/null || log_warn "Failed to fetch commit object $commit"
         echo "$commit"
         return 0
     fi
