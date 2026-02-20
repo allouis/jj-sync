@@ -7,8 +7,8 @@ TEST_HELPER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Get the project root (parent of tests/)
 PROJECT_ROOT="$(cd "$TEST_HELPER_DIR/.." && pwd)"
 
-# Path to jj-sync script
-JJ_SYNC="$PROJECT_ROOT/jj-sync"
+# Path to refsync script
+REFSYNC="$PROJECT_ROOT/refsync"
 
 # Test environment directory (set by setup_test_env)
 TEST_DIR=""
@@ -181,7 +181,7 @@ assert_bookmark_exists_remote() {
     local bookmark="$1"
     local refs
 
-    refs=$(git ls-remote "$TEST_DIR/remote.git" "refs/jj-sync/$bookmark" 2>/dev/null)
+    refs=$(git ls-remote "$TEST_DIR/remote.git" "refs/refsync/$bookmark" 2>/dev/null)
     if [[ -z "$refs" ]]; then
         echo "Expected bookmark '$bookmark' to exist on remote, but it doesn't"
         echo "Remote refs:"
@@ -196,7 +196,7 @@ assert_bookmark_not_exists_remote() {
     local bookmark="$1"
     local refs
 
-    refs=$(git ls-remote "$TEST_DIR/remote.git" "refs/jj-sync/$bookmark" 2>/dev/null)
+    refs=$(git ls-remote "$TEST_DIR/remote.git" "refs/refsync/$bookmark" 2>/dev/null)
     if [[ -n "$refs" ]]; then
         echo "Expected bookmark '$bookmark' to NOT exist on remote, but it does"
         return 1
@@ -283,44 +283,44 @@ assert_dir_exists() {
 # Usage: count_remote_bookmarks <pattern>
 count_remote_bookmarks() {
     local pattern="$1"
-    git ls-remote "$TEST_DIR/remote.git" "refs/jj-sync/$pattern" 2>/dev/null | wc -l | tr -d ' '
+    git ls-remote "$TEST_DIR/remote.git" "refs/refsync/$pattern" 2>/dev/null | wc -l | tr -d ' '
 }
 
 # ============================================================================
-# jj-sync Runners
+# refsync Runners
 # ============================================================================
 
-# Run jj-sync with test environment
-# Usage: run_jj_sync <machine> [args...]
+# Run refsync with test environment
+# Usage: run_refsync <machine> [args...]
 # Env vars can be passed by setting them before the call
-run_jj_sync() {
+run_refsync() {
     local machine="$1"
     shift
 
     cd "$TEST_DIR/$machine" || return 1
 
-    JJ_SYNC_USER="${JJ_SYNC_USER:-$TEST_USER}" \
-    JJ_SYNC_MACHINE="${JJ_SYNC_MACHINE:-$machine}" \
-    JJ_SYNC_REMOTE="${JJ_SYNC_REMOTE:-sync}" \
-    JJ_SYNC_GC_REVS_DAYS="${JJ_SYNC_GC_REVS_DAYS:-7}" \
-    JJ_SYNC_GC_DOCS_MAX_CHAIN="${JJ_SYNC_GC_DOCS_MAX_CHAIN:-50}" \
-        "$JJ_SYNC" "$@"
+    REFSYNC_USER="${REFSYNC_USER:-$TEST_USER}" \
+    REFSYNC_MACHINE="${REFSYNC_MACHINE:-$machine}" \
+    REFSYNC_REMOTE="${REFSYNC_REMOTE:-sync}" \
+    REFSYNC_GC_REVS_DAYS="${REFSYNC_GC_REVS_DAYS:-7}" \
+    REFSYNC_GC_DOCS_MAX_CHAIN="${REFSYNC_GC_DOCS_MAX_CHAIN:-50}" \
+        "$REFSYNC" "$@"
 }
 
-# Run jj-sync with docs configured
-# Usage: run_jj_sync_with_docs <machine> <docs_dirs> [args...]
-run_jj_sync_with_docs() {
+# Run refsync with docs configured
+# Usage: run_refsync_with_docs <machine> <docs_dirs> [args...]
+run_refsync_with_docs() {
     local machine="$1"
     local docs_dirs="$2"
     shift 2
 
     cd "$TEST_DIR/$machine" || return 1
 
-    JJ_SYNC_USER="${JJ_SYNC_USER:-$TEST_USER}" \
-    JJ_SYNC_MACHINE="$machine" \
-    JJ_SYNC_REMOTE="sync" \
-    JJ_SYNC_DOCS="$docs_dirs" \
-        "$JJ_SYNC" "$@"
+    REFSYNC_USER="${REFSYNC_USER:-$TEST_USER}" \
+    REFSYNC_MACHINE="$machine" \
+    REFSYNC_REMOTE="sync" \
+    REFSYNC_DOCS="$docs_dirs" \
+        "$REFSYNC" "$@"
 }
 
 # ============================================================================

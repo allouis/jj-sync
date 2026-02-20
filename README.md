@@ -1,6 +1,6 @@
-# jj-sync
+# refsync
 
-Sync WIP jj revisions and gitignored docs across machines via any git remote.
+Sync WIP revisions and gitignored docs across machines via git refs.
 
 ## Requirements
 
@@ -10,13 +10,13 @@ Sync WIP jj revisions and gitignored docs across machines via any git remote.
 
 ## Install
 
-jj-sync is a single bash script.
+refsync is a single bash script.
 
 **Copy the script:**
 
 ```bash
-curl -o ~/.local/bin/jj-sync https://raw.githubusercontent.com/allouis/jj-sync/main/jj-sync
-chmod +x ~/.local/bin/jj-sync
+curl -o ~/.local/bin/refsync https://raw.githubusercontent.com/allouis/jj-sync/main/refsync
+chmod +x ~/.local/bin/refsync
 ```
 
 **Clone and install:**
@@ -49,37 +49,44 @@ home.packages = [ inputs.jj-sync.packages.${system}.default ];
 
 ## Quick start
 
-On your laptop:
+**Doc sync** (works in any git repo):
 
 ```bash
-jj-sync push
+refsync push --docs ai/docs .claude   # push gitignored docs
+refsync pull --docs                    # pull on another machine
 ```
 
-On your other machine:
+**Revision sync** (requires jj):
 
 ```bash
-jj-sync pull
+refsync push    # pushes WIP jj revisions
+refsync pull    # pulls them on another machine
 ```
 
 Your changes show up in `jj log` as normal revisions. Use `--dry-run` to
 preview what would happen without changing anything.
 
-For docs (AI context, local notes, anything gitignored):
-
-```bash
-jj-sync push --docs ai/docs .claude
-jj-sync pull --docs ai/docs .claude
-```
-
-jj-sync auto-detects your remote. If you have multiple remotes, it looks for
+refsync auto-detects your remote. If you have multiple remotes, it looks for
 `origin` or `upstream`. If it can't figure it out, it'll tell you what to do.
+
+## Smart defaults
+
+When you don't specify `--docs`, `--revs`, or `--both`, refsync picks the
+right mode automatically:
+
+| Context | Default mode |
+|---|---|
+| jj repo with `REFSYNC_DOCS` set | `--both` (revisions + docs) |
+| jj repo without `REFSYNC_DOCS` | `--revs` (revisions only) |
+| Plain git repo with `REFSYNC_DOCS` set | `--docs` (docs only) |
+| Plain git repo without `REFSYNC_DOCS` | Error (nothing to sync) |
 
 ## Commands
 
 ```
-Usage: jj-sync <command> [options]
+Usage: refsync <command> [options]
 
-Sync WIP jj revisions and gitignored docs across machines.
+Sync WIP revisions and gitignored docs across machines via git refs.
 (Doc sync works in any git repo; revision sync requires jj.)
 
 Commands:
@@ -91,32 +98,36 @@ Commands:
   help      Show this help
 
 Flags:
-  --docs [dir...]  Sync docs only (dirs override JJ_SYNC_DOCS)
-  --both [dir...]  Sync revisions + docs (dirs override JJ_SYNC_DOCS)
-                   Default (no flag): sync revisions only
+  --docs [dir...]  Sync docs only (dirs override REFSYNC_DOCS)
+  --revs           Sync revisions only (requires jj)
+  --both [dir...]  Sync revisions + docs (dirs override REFSYNC_DOCS)
+
+  Default (no flag): docs in git repos, revisions in jj repos,
+  both in jj repos with REFSYNC_DOCS set.
 
 Options:
-  --remote <name>   Override sync remote (default: auto-detected or $JJ_SYNC_REMOTE)
-  --user <name>     Override user identity (default: jj/git user.email or $JJ_SYNC_USER)
-  --machine <name>  Override machine name (default: $JJ_SYNC_MACHINE or hostname)
+  --remote <name>   Override sync remote (default: auto-detected or $REFSYNC_REMOTE)
+  --user <name>     Override user identity (default: jj/git user.email or $REFSYNC_USER)
+  --machine <name>  Override machine name (default: $REFSYNC_MACHINE or hostname)
   --dry-run         Show what would happen without doing it
   --verbose         Show git/jj commands as they run
   --force           Skip confirmation prompts
 
 Environment Variables:
-  JJ_SYNC_DOCS              Space-separated directories to sync (required for --docs/--both)
-  JJ_SYNC_REMOTE            Git remote name (auto-detected from origin/upstream)
-  JJ_SYNC_USER              User identity for ref namespacing (default: jj/git user.email)
-  JJ_SYNC_MACHINE           Machine identifier (default: hostname)
-  JJ_SYNC_GC_REVS_DAYS      GC threshold for rev bookmarks (default: 7)
-  JJ_SYNC_GC_DOCS_MAX_CHAIN GC threshold for doc chain length (default: 50)
+  REFSYNC_DOCS              Space-separated directories to sync
+  REFSYNC_REMOTE            Git remote name (auto-detected from origin/upstream)
+  REFSYNC_USER              User identity for ref namespacing (default: jj/git user.email)
+  REFSYNC_MACHINE           Machine identifier (default: hostname)
+  REFSYNC_GC_REVS_DAYS      GC threshold for rev bookmarks (default: 7)
+  REFSYNC_GC_DOCS_MAX_CHAIN GC threshold for doc chain length (default: 50)
 
 Examples:
-  jj-sync push                        # Push WIP revisions
-  jj-sync push --docs ai/docs .claude # Push specific doc directories
-  jj-sync push --both                 # Push revisions and docs
-  jj-sync pull --docs                 # Pull only docs
-  jj-sync status                      # Show sync status
+  refsync push                        # Smart default (see above)
+  refsync push --docs ai/docs .claude # Push specific doc directories
+  refsync push --revs                 # Push jj revisions only
+  refsync push --both                 # Push revisions and docs
+  refsync pull --docs                 # Pull only docs
+  refsync status                      # Show sync status
 ```
 
 ## Doc sync
@@ -127,17 +138,18 @@ machines -- AI context, local notes, generated docs. Doc sync handles these.
 Pass directories directly on the command line:
 
 ```bash
-jj-sync push --docs ai/docs .claude
-jj-sync pull --docs ai/docs .claude
+refsync push --docs ai/docs .claude
+refsync pull --docs ai/docs .claude
 ```
 
-Or set `JJ_SYNC_DOCS` to avoid repeating them:
+Or set `REFSYNC_DOCS` to avoid repeating them:
 
 ```bash
-export JJ_SYNC_DOCS="ai/docs .claude"
+export REFSYNC_DOCS="ai/docs .claude"
 
-jj-sync push --docs   # uses directories from JJ_SYNC_DOCS
-jj-sync push --both   # revisions + docs
+refsync push --docs   # uses directories from REFSYNC_DOCS
+refsync push --both   # revisions + docs
+refsync push          # in a jj repo, auto-detects --both since REFSYNC_DOCS is set
 ```
 
 Inline arguments override the environment variable when both are present.
@@ -146,21 +158,21 @@ Doc sync works in plain git repos too -- jj is only needed for revision sync.
 
 ## How it works
 
-jj-sync stores everything in git refs under `refs/jj-sync/` on the remote.
+refsync stores everything in git refs under `refs/refsync/` on the remote.
 These refs don't show up as bookmarks or branches in jj, and git ignores them
 too. They're completely separate from your normal workflow.
 
 The ref structure:
 
 ```
-refs/jj-sync/sync/<user>/<machine>/revs/<change-id>
-refs/jj-sync/sync/<user>/<machine>/docs
+refs/refsync/sync/<user>/<machine>/revs/<change-id>
+refs/refsync/sync/<user>/<machine>/docs
 ```
 
 Refs are namespaced by user email and machine hostname, so multiple people (or
 machines) sharing the same remote don't step on each other.
 
-For revisions, jj-sync pushes commit SHAs directly to these refs and fetches
+For revisions, refsync pushes commit SHAs directly to these refs and fetches
 them back with `jj git import`. For docs, it stores file snapshots as git
 commits and extracts them on pull.
 
@@ -168,12 +180,12 @@ commits and extracts them on pull.
 
 | Variable | Default | Description |
 |---|---|---|
-| `JJ_SYNC_REMOTE` | auto-detected | Git remote to sync with |
-| `JJ_SYNC_USER` | auto-detected from jj or git config | Namespaces refs per user |
-| `JJ_SYNC_MACHINE` | hostname | Namespaces refs per machine |
-| `JJ_SYNC_DOCS` | (unset) | Space-separated directories for doc sync |
-| `JJ_SYNC_GC_REVS_DAYS` | 7 | Delete revision refs older than this |
-| `JJ_SYNC_GC_DOCS_MAX_CHAIN` | 50 | Squash doc chains longer than this |
+| `REFSYNC_REMOTE` | auto-detected | Git remote to sync with |
+| `REFSYNC_USER` | auto-detected from jj or git config | Namespaces refs per user |
+| `REFSYNC_MACHINE` | hostname | Namespaces refs per machine |
+| `REFSYNC_DOCS` | (unset) | Space-separated directories for doc sync |
+| `REFSYNC_GC_REVS_DAYS` | 7 | Delete revision refs older than this |
+| `REFSYNC_GC_DOCS_MAX_CHAIN` | 50 | Squash doc chains longer than this |
 
 Command-line flags (`--remote`, `--user`, `--machine`) override the
 corresponding variables. Use `--verbose` on any command to see the git/jj
@@ -184,7 +196,7 @@ commands being run. Use `--dry-run` to preview without making changes.
 **Inspect sync state on the remote:**
 
 ```bash
-git ls-remote <remote> 'refs/jj-sync/*'
+git ls-remote <remote> 'refs/refsync/*'
 ```
 
 **"No WIP revisions to push" but I have changes:**
@@ -202,8 +214,8 @@ match exactly (`ai/docs` vs `./ai/docs` are different).
 **Something is broken:**
 
 ```bash
-jj-sync clean --force  # wipes all sync state for current user
-jj-sync push           # start fresh
+refsync clean --force  # wipes all sync state for current user
+refsync push           # start fresh
 ```
 
 ## Limitations
@@ -212,7 +224,7 @@ jj-sync push           # start fresh
   machines and push from both, the second push overwrites the first.
 - Doc sync merges on pull, not push. Conflicts show up as git conflict markers.
 - You can't sync a subset of revisions.
-- Directory names in `JJ_SYNC_DOCS` can't contain spaces.
+- Directory names in `REFSYNC_DOCS` can't contain spaces.
 
 ## License
 

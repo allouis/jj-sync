@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# install.sh - Install jj-sync
+# install.sh - Install refsync
 set -euo pipefail
 
 # Default installation prefix
 PREFIX="${PREFIX:-$HOME/.local}"
 BINDIR="${BINDIR:-$PREFIX/bin}"
-LIBDIR="${LIBDIR:-$PREFIX/share/jj-sync}"
+LIBDIR="${LIBDIR:-$PREFIX/share/refsync}"
 COMPLETIONS_DIR_BASH="${COMPLETIONS_DIR_BASH:-$PREFIX/share/bash-completion/completions}"
 COMPLETIONS_DIR_ZSH="${COMPLETIONS_DIR_ZSH:-$PREFIX/share/zsh/site-functions}"
 COMPLETIONS_DIR_FISH="${COMPLETIONS_DIR_FISH:-$HOME/.config/fish/completions}"
@@ -26,12 +26,12 @@ usage() {
     cat <<EOF
 Usage: $0 [OPTIONS]
 
-Install jj-sync to your system.
+Install refsync to your system.
 
 Options:
     --prefix=PATH       Installation prefix (default: ~/.local)
     --bindir=PATH       Binary directory (default: PREFIX/bin)
-    --uninstall         Remove jj-sync
+    --uninstall         Remove refsync
     --help              Show this help
 
 Environment variables:
@@ -43,16 +43,16 @@ Environment variables:
 Examples:
     $0                          # Install to ~/.local
     $0 --prefix=/usr/local      # Install system-wide (requires sudo)
-    $0 --uninstall              # Remove jj-sync
+    $0 --uninstall              # Remove refsync
 
 EOF
 }
 
-install_jj_sync() {
+install_refsync() {
     local script_dir
     script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-    info "Installing jj-sync..."
+    info "Installing refsync..."
 
     # Create directories
     mkdir -p "$BINDIR"
@@ -61,27 +61,27 @@ install_jj_sync() {
     mkdir -p "$COMPLETIONS_DIR_FISH"
 
     # Install the self-contained script
-    info "Installing jj-sync to $BINDIR"
-    cp "$script_dir/jj-sync" "$BINDIR/jj-sync"
-    chmod +x "$BINDIR/jj-sync"
-    success "jj-sync installed"
+    info "Installing refsync to $BINDIR"
+    cp "$script_dir/refsync" "$BINDIR/refsync"
+    chmod +x "$BINDIR/refsync"
+    success "refsync installed"
 
     # Install completions
     if [[ -d "$script_dir/completions" ]]; then
         info "Installing shell completions"
 
-        if [[ -f "$script_dir/completions/jj-sync.bash" ]]; then
-            cp "$script_dir/completions/jj-sync.bash" "$COMPLETIONS_DIR_BASH/jj-sync"
+        if [[ -f "$script_dir/completions/refsync.bash" ]]; then
+            cp "$script_dir/completions/refsync.bash" "$COMPLETIONS_DIR_BASH/refsync"
             success "Bash completions installed to $COMPLETIONS_DIR_BASH"
         fi
 
-        if [[ -f "$script_dir/completions/_jj-sync" ]]; then
-            cp "$script_dir/completions/_jj-sync" "$COMPLETIONS_DIR_ZSH/_jj-sync"
+        if [[ -f "$script_dir/completions/_refsync" ]]; then
+            cp "$script_dir/completions/_refsync" "$COMPLETIONS_DIR_ZSH/_refsync"
             success "Zsh completions installed to $COMPLETIONS_DIR_ZSH"
         fi
 
-        if [[ -f "$script_dir/completions/jj-sync.fish" ]]; then
-            cp "$script_dir/completions/jj-sync.fish" "$COMPLETIONS_DIR_FISH/jj-sync.fish"
+        if [[ -f "$script_dir/completions/refsync.fish" ]]; then
+            cp "$script_dir/completions/refsync.fish" "$COMPLETIONS_DIR_FISH/refsync.fish"
             success "Fish completions installed to $COMPLETIONS_DIR_FISH"
         fi
     fi
@@ -104,7 +104,7 @@ install_jj_sync() {
     echo "To enable shell completions:"
     echo ""
     echo "  Bash: Add to ~/.bashrc:"
-    echo "    source $COMPLETIONS_DIR_BASH/jj-sync"
+    echo "    source $COMPLETIONS_DIR_BASH/refsync"
     echo ""
     echo "  Zsh: Add $COMPLETIONS_DIR_ZSH to your fpath before compinit"
     echo ""
@@ -112,12 +112,12 @@ install_jj_sync() {
     echo ""
 }
 
-uninstall_jj_sync() {
-    info "Uninstalling jj-sync..."
+uninstall_refsync() {
+    info "Uninstalling refsync..."
 
-    if [[ -f "$BINDIR/jj-sync" ]]; then
-        rm -f "$BINDIR/jj-sync"
-        success "Removed $BINDIR/jj-sync"
+    if [[ -f "$BINDIR/refsync" ]]; then
+        rm -f "$BINDIR/refsync"
+        success "Removed $BINDIR/refsync"
     fi
 
     if [[ -d "$LIBDIR" ]]; then
@@ -125,18 +125,18 @@ uninstall_jj_sync() {
         success "Removed $LIBDIR"
     fi
 
-    if [[ -f "$COMPLETIONS_DIR_BASH/jj-sync" ]]; then
-        rm -f "$COMPLETIONS_DIR_BASH/jj-sync"
+    if [[ -f "$COMPLETIONS_DIR_BASH/refsync" ]]; then
+        rm -f "$COMPLETIONS_DIR_BASH/refsync"
         success "Removed bash completions"
     fi
 
-    if [[ -f "$COMPLETIONS_DIR_ZSH/_jj-sync" ]]; then
-        rm -f "$COMPLETIONS_DIR_ZSH/_jj-sync"
+    if [[ -f "$COMPLETIONS_DIR_ZSH/_refsync" ]]; then
+        rm -f "$COMPLETIONS_DIR_ZSH/_refsync"
         success "Removed zsh completions"
     fi
 
-    if [[ -f "$COMPLETIONS_DIR_FISH/jj-sync.fish" ]]; then
-        rm -f "$COMPLETIONS_DIR_FISH/jj-sync.fish"
+    if [[ -f "$COMPLETIONS_DIR_FISH/refsync.fish" ]]; then
+        rm -f "$COMPLETIONS_DIR_FISH/refsync.fish"
         success "Removed fish completions"
     fi
 
@@ -152,7 +152,7 @@ while [[ $# -gt 0 ]]; do
         --prefix=*)
             PREFIX="${1#*=}"
             BINDIR="$PREFIX/bin"
-            LIBDIR="$PREFIX/share/jj-sync"
+            LIBDIR="$PREFIX/share/refsync"
             COMPLETIONS_DIR_BASH="$PREFIX/share/bash-completion/completions"
             COMPLETIONS_DIR_ZSH="$PREFIX/share/zsh/site-functions"
             shift
@@ -179,7 +179,7 @@ done
 
 # Run installation or uninstallation
 if [[ "$UNINSTALL" == "true" ]]; then
-    uninstall_jj_sync
+    uninstall_refsync
 else
-    install_jj_sync
+    install_refsync
 fi

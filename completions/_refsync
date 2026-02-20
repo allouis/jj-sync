@@ -1,8 +1,8 @@
-#compdef jj-sync
-# jj-sync zsh completion
+#compdef refsync
+# refsync zsh completion
 # Place in $fpath or source directly
 
-_jj_sync() {
+_refsync() {
     local -a commands
     local -a global_opts
 
@@ -20,15 +20,16 @@ _jj_sync() {
         '--version[Show version]'
         '--dry-run[Show what would be done without doing it]'
         '--verbose[Show verbose output]'
-        '--remote=[Specify sync remote (auto-detected if one remote)]:remote:_jj_sync_remotes'
+        '--remote=[Specify sync remote (auto-detected if one remote)]:remote:_refsync_remotes'
         '--user=[Specify user identity for ref namespacing]:user:'
         '--machine=[Specify machine name]:machine:'
     )
 
     local -a push_pull_opts
     push_pull_opts=(
-        '--docs[Sync docs only (dirs override JJ_SYNC_DOCS)]'
-        '--both[Sync revisions + docs (dirs override JJ_SYNC_DOCS)]'
+        '--docs[Sync docs only (dirs override REFSYNC_DOCS)]'
+        '--revs[Sync revisions only (requires jj)]'
+        '--both[Sync revisions + docs (dirs override REFSYNC_DOCS)]'
     )
 
     _arguments -C \
@@ -37,7 +38,7 @@ _jj_sync() {
 
     case "$state" in
         command)
-            _describe -t commands 'jj-sync command' commands
+            _describe -t commands 'refsync command' commands
             _describe -t options 'options' global_opts
             ;;
         args)
@@ -61,7 +62,7 @@ _jj_sync() {
     esac
 }
 
-_jj_sync_remotes() {
+_refsync_remotes() {
     local -a remotes
     if [[ -d .git ]] || [[ -d .jj ]]; then
         remotes=(${(f)"$(git remote 2>/dev/null)"})
@@ -69,4 +70,4 @@ _jj_sync_remotes() {
     fi
 }
 
-_jj_sync "$@"
+_refsync "$@"

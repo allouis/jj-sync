@@ -16,17 +16,17 @@ teardown() {
 
     # Source env.sh and load with clean env
     (
-        unset JJ_SYNC_REMOTE
-        unset JJ_SYNC_MACHINE
-        unset JJ_SYNC_DOCS
-        source "$PROJECT_ROOT/jj-sync"
+        unset REFSYNC_REMOTE
+        unset REFSYNC_MACHINE
+        unset REFSYNC_DOCS
+        source "$PROJECT_ROOT/refsync"
         load_env
 
         # Remote should be empty (auto-detected later)
-        [[ -z "$JJ_SYNC_REMOTE" ]]
-        [[ -n "$JJ_SYNC_MACHINE" ]]
-        [[ "$JJ_SYNC_GC_REVS_DAYS" == "7" ]]
-        [[ "$JJ_SYNC_GC_DOCS_MAX_CHAIN" == "50" ]]
+        [[ -z "$REFSYNC_REMOTE" ]]
+        [[ -n "$REFSYNC_MACHINE" ]]
+        [[ "$REFSYNC_GC_REVS_DAYS" == "7" ]]
+        [[ "$REFSYNC_GC_DOCS_MAX_CHAIN" == "50" ]]
     )
 }
 
@@ -34,14 +34,14 @@ teardown() {
     cd_to_machine "$MACHINE_LAPTOP"
 
     (
-        unset JJ_SYNC_MACHINE
-        source "$PROJECT_ROOT/jj-sync"
+        unset REFSYNC_MACHINE
+        source "$PROJECT_ROOT/refsync"
         load_env
 
         # Machine name should be non-empty (derived from hostname)
-        [[ -n "$JJ_SYNC_MACHINE" ]]
+        [[ -n "$REFSYNC_MACHINE" ]]
         # Should only contain valid characters
-        [[ "$JJ_SYNC_MACHINE" =~ ^[a-zA-Z0-9_-]+$ ]]
+        [[ "$REFSYNC_MACHINE" =~ ^[a-zA-Z0-9_-]+$ ]]
     )
 }
 
@@ -49,11 +49,11 @@ teardown() {
     cd_to_machine "$MACHINE_LAPTOP"
 
     (
-        export JJ_SYNC_REMOTE="other-remote"
-        source "$PROJECT_ROOT/jj-sync"
+        export REFSYNC_REMOTE="other-remote"
+        source "$PROJECT_ROOT/refsync"
         load_env
 
-        [[ "$JJ_SYNC_REMOTE" == "other-remote" ]]
+        [[ "$REFSYNC_REMOTE" == "other-remote" ]]
     )
 }
 
@@ -61,48 +61,48 @@ teardown() {
     cd_to_machine "$MACHINE_LAPTOP"
 
     (
-        export JJ_SYNC_MACHINE="my-custom-machine"
-        source "$PROJECT_ROOT/jj-sync"
+        export REFSYNC_MACHINE="my-custom-machine"
+        source "$PROJECT_ROOT/refsync"
         load_env
 
-        [[ "$JJ_SYNC_MACHINE" == "my-custom-machine" ]]
+        [[ "$REFSYNC_MACHINE" == "my-custom-machine" ]]
     )
 }
 
-@test "V5: --docs without JJ_SYNC_DOCS errors" {
+@test "V5: --docs without REFSYNC_DOCS errors" {
     cd_to_machine "$MACHINE_LAPTOP"
 
-    # Run with explicitly empty JJ_SYNC_DOCS
-    run env -u JJ_SYNC_DOCS \
-        JJ_SYNC_USER="$TEST_USER" \
-        JJ_SYNC_MACHINE="$MACHINE_LAPTOP" \
-        JJ_SYNC_REMOTE="sync" \
-        "$JJ_SYNC" push --docs
+    # Run with explicitly empty REFSYNC_DOCS
+    run env -u REFSYNC_DOCS \
+        REFSYNC_USER="$TEST_USER" \
+        REFSYNC_MACHINE="$MACHINE_LAPTOP" \
+        REFSYNC_REMOTE="sync" \
+        "$REFSYNC" push --docs
 
     [[ "$status" -ne 0 ]]
-    [[ "$output" == *"JJ_SYNC_DOCS"* ]]
+    [[ "$output" == *"REFSYNC_DOCS"* ]]
 }
 
-@test "V6: --both without JJ_SYNC_DOCS errors" {
+@test "V6: --both without REFSYNC_DOCS errors" {
     cd_to_machine "$MACHINE_LAPTOP"
 
-    # Run with explicitly empty JJ_SYNC_DOCS
-    run env -u JJ_SYNC_DOCS \
-        JJ_SYNC_USER="$TEST_USER" \
-        JJ_SYNC_MACHINE="$MACHINE_LAPTOP" \
-        JJ_SYNC_REMOTE="sync" \
-        "$JJ_SYNC" push --both
+    # Run with explicitly empty REFSYNC_DOCS
+    run env -u REFSYNC_DOCS \
+        REFSYNC_USER="$TEST_USER" \
+        REFSYNC_MACHINE="$MACHINE_LAPTOP" \
+        REFSYNC_REMOTE="sync" \
+        "$REFSYNC" push --both
 
     [[ "$status" -ne 0 ]]
-    [[ "$output" == *"JJ_SYNC_DOCS"* ]]
+    [[ "$output" == *"REFSYNC_DOCS"* ]]
 }
 
-@test "V7: JJ_SYNC_DOCS correctly splits into dirs" {
+@test "V7: REFSYNC_DOCS correctly splits into dirs" {
     cd_to_machine "$MACHINE_LAPTOP"
 
     (
-        export JJ_SYNC_DOCS="dir1 dir2 dir3"
-        source "$PROJECT_ROOT/jj-sync"
+        export REFSYNC_DOCS="dir1 dir2 dir3"
+        source "$PROJECT_ROOT/refsync"
         load_env
 
         local dirs=()
@@ -117,18 +117,18 @@ teardown() {
     )
 }
 
-@test "V8: Empty JJ_SYNC_DOCS with --docs errors" {
+@test "V8: Empty REFSYNC_DOCS with --docs errors" {
     cd_to_machine "$MACHINE_LAPTOP"
 
-    # Run with explicitly empty JJ_SYNC_DOCS
-    run env JJ_SYNC_DOCS="" \
-        JJ_SYNC_USER="$TEST_USER" \
-        JJ_SYNC_MACHINE="$MACHINE_LAPTOP" \
-        JJ_SYNC_REMOTE="sync" \
-        "$JJ_SYNC" push --docs
+    # Run with explicitly empty REFSYNC_DOCS
+    run env REFSYNC_DOCS="" \
+        REFSYNC_USER="$TEST_USER" \
+        REFSYNC_MACHINE="$MACHINE_LAPTOP" \
+        REFSYNC_REMOTE="sync" \
+        "$REFSYNC" push --docs
 
     [[ "$status" -ne 0 ]]
-    [[ "$output" == *"JJ_SYNC_DOCS"* ]]
+    [[ "$output" == *"REFSYNC_DOCS"* ]]
 }
 
 @test "V9: Auto-detects single remote" {
@@ -137,11 +137,11 @@ teardown() {
     # Create a WIP change
     make_change "test.txt" "hello" "Auto-detect test"
 
-    # Push without setting JJ_SYNC_REMOTE — should auto-detect "sync" (the only remote)
-    run env -u JJ_SYNC_REMOTE \
-        JJ_SYNC_USER="$TEST_USER" \
-        JJ_SYNC_MACHINE="$MACHINE_LAPTOP" \
-        "$JJ_SYNC" push
+    # Push without setting REFSYNC_REMOTE — should auto-detect "sync" (the only remote)
+    run env -u REFSYNC_REMOTE \
+        REFSYNC_USER="$TEST_USER" \
+        REFSYNC_MACHINE="$MACHINE_LAPTOP" \
+        "$REFSYNC" push
 
     [[ "$status" -eq 0 ]]
     [[ "$output" == *"Pushed"* ]]
@@ -160,11 +160,11 @@ teardown() {
 
     make_change "test.txt" "hello" "Multi-remote test"
 
-    # Push without setting JJ_SYNC_REMOTE — should error
-    run env -u JJ_SYNC_REMOTE \
-        JJ_SYNC_USER="$TEST_USER" \
-        JJ_SYNC_MACHINE="$MACHINE_LAPTOP" \
-        "$JJ_SYNC" push
+    # Push without setting REFSYNC_REMOTE — should error
+    run env -u REFSYNC_REMOTE \
+        REFSYNC_USER="$TEST_USER" \
+        REFSYNC_MACHINE="$MACHINE_LAPTOP" \
+        "$REFSYNC" push
 
     [[ "$status" -ne 0 ]]
     [[ "$output" == *"none named 'origin' or 'upstream'"* ]]
@@ -181,10 +181,10 @@ teardown() {
 
     make_change "test.txt" "hello" "No-remote test"
 
-    run env -u JJ_SYNC_REMOTE \
-        JJ_SYNC_USER="$TEST_USER" \
-        JJ_SYNC_MACHINE="$MACHINE_LAPTOP" \
-        "$JJ_SYNC" push
+    run env -u REFSYNC_REMOTE \
+        REFSYNC_USER="$TEST_USER" \
+        REFSYNC_MACHINE="$MACHINE_LAPTOP" \
+        "$REFSYNC" push
 
     [[ "$status" -ne 0 ]]
     [[ "$output" == *"No git remotes"* ]]
@@ -202,10 +202,10 @@ teardown() {
 
     make_change "test.txt" "hello" "Origin fallback test"
 
-    run env -u JJ_SYNC_REMOTE \
-        JJ_SYNC_USER="$TEST_USER" \
-        JJ_SYNC_MACHINE="$MACHINE_LAPTOP" \
-        "$JJ_SYNC" push
+    run env -u REFSYNC_REMOTE \
+        REFSYNC_USER="$TEST_USER" \
+        REFSYNC_MACHINE="$MACHINE_LAPTOP" \
+        "$REFSYNC" push
 
     [[ "$status" -eq 0 ]]
     [[ "$output" == *"Pushed"* ]]
@@ -223,10 +223,10 @@ teardown() {
 
     make_change "test.txt" "hello" "Upstream fallback test"
 
-    run env -u JJ_SYNC_REMOTE \
-        JJ_SYNC_USER="$TEST_USER" \
-        JJ_SYNC_MACHINE="$MACHINE_LAPTOP" \
-        "$JJ_SYNC" push
+    run env -u REFSYNC_REMOTE \
+        REFSYNC_USER="$TEST_USER" \
+        REFSYNC_MACHINE="$MACHINE_LAPTOP" \
+        "$REFSYNC" push
 
     [[ "$status" -eq 0 ]]
     [[ "$output" == *"Pushed"* ]]
@@ -244,10 +244,10 @@ teardown() {
 
     make_change "test.txt" "hello" "Both remotes test"
 
-    run env -u JJ_SYNC_REMOTE \
-        JJ_SYNC_USER="$TEST_USER" \
-        JJ_SYNC_MACHINE="$MACHINE_LAPTOP" \
-        "$JJ_SYNC" push
+    run env -u REFSYNC_REMOTE \
+        REFSYNC_USER="$TEST_USER" \
+        REFSYNC_MACHINE="$MACHINE_LAPTOP" \
+        "$REFSYNC" push
 
     [[ "$status" -ne 0 ]]
     [[ "$output" == *"Both 'origin' and 'upstream'"* ]]
@@ -260,12 +260,12 @@ teardown() {
 @test "V13: User auto-detected from jj/git config" {
     cd_to_machine "$MACHINE_LAPTOP"
 
-    # Run jj-sync status (which calls load_env) without JJ_SYNC_USER
+    # Run refsync status (which calls load_env) without REFSYNC_USER
     # and verify it picks up a user identity
-    run env -u JJ_SYNC_USER \
-        JJ_SYNC_MACHINE="$MACHINE_LAPTOP" \
-        JJ_SYNC_REMOTE="sync" \
-        "$JJ_SYNC" status
+    run env -u REFSYNC_USER \
+        REFSYNC_MACHINE="$MACHINE_LAPTOP" \
+        REFSYNC_REMOTE="sync" \
+        "$REFSYNC" status
 
     [[ "$status" -eq 0 ]]
     # Should NOT show "(not set)" for User — some email was detected
@@ -277,11 +277,11 @@ teardown() {
     cd_to_machine "$MACHINE_LAPTOP"
 
     (
-        export JJ_SYNC_USER="custom@user.com"
-        source "$PROJECT_ROOT/jj-sync"
+        export REFSYNC_USER="custom@user.com"
+        source "$PROJECT_ROOT/refsync"
         load_env
 
-        [[ "$JJ_SYNC_USER" == "custom@user.com" ]]
+        [[ "$REFSYNC_USER" == "custom@user.com" ]]
     )
 }
 
@@ -290,7 +290,7 @@ teardown() {
 
     make_change "test.txt" "hello" "User namespace test"
 
-    run_jj_sync "$MACHINE_LAPTOP" push
+    run_refsync "$MACHINE_LAPTOP" push
 
     # Verify refs include user in path
     local count
@@ -308,12 +308,12 @@ teardown() {
 
     # User A pushes
     make_change "test.txt" "user-a content" "User A change"
-    JJ_SYNC_USER="alice@example.com" run_jj_sync "$MACHINE_LAPTOP" push
+    REFSYNC_USER="alice@example.com" run_refsync "$MACHINE_LAPTOP" push
 
     # User B pushes (same machine, different user)
     cd_to_machine "$MACHINE_DEV1"
     make_change "test.txt" "user-b content" "User B change"
-    JJ_SYNC_USER="bob@example.com" run_jj_sync "$MACHINE_DEV1" push
+    REFSYNC_USER="bob@example.com" run_refsync "$MACHINE_DEV1" push
 
     # Both users' refs should exist
     local alice_count bob_count
@@ -332,11 +332,11 @@ teardown() {
     echo "hello from plain git" > docs/note.md
 
     run env \
-        JJ_SYNC_USER="$TEST_USER" \
-        JJ_SYNC_MACHINE="plain-git" \
-        JJ_SYNC_REMOTE="sync" \
-        JJ_SYNC_DOCS="docs" \
-        "$JJ_SYNC" push --docs
+        REFSYNC_USER="$TEST_USER" \
+        REFSYNC_MACHINE="plain-git" \
+        REFSYNC_REMOTE="sync" \
+        REFSYNC_DOCS="docs" \
+        "$REFSYNC" push --docs
 
     [[ "$status" -eq 0 ]]
     [[ "$output" == *"Pushed"* ]]
@@ -352,18 +352,18 @@ teardown() {
     cd_to_machine "$MACHINE_LAPTOP"
     mkdir -p docs
     echo "doc from laptop" > docs/note.md
-    run_jj_sync_with_docs "$MACHINE_LAPTOP" "docs" push --docs
+    run_refsync_with_docs "$MACHINE_LAPTOP" "docs" push --docs
 
     # Now pull into a plain git repo
     create_plain_git_repo "plain-git"
     cd_to_machine "plain-git"
 
     run env \
-        JJ_SYNC_USER="$TEST_USER" \
-        JJ_SYNC_MACHINE="plain-git" \
-        JJ_SYNC_REMOTE="sync" \
-        JJ_SYNC_DOCS="docs" \
-        "$JJ_SYNC" pull --docs
+        REFSYNC_USER="$TEST_USER" \
+        REFSYNC_MACHINE="plain-git" \
+        REFSYNC_REMOTE="sync" \
+        REFSYNC_DOCS="docs" \
+        "$REFSYNC" pull --docs
 
     [[ "$status" -eq 0 ]]
     assert_file_exists "docs/note.md"
@@ -378,11 +378,11 @@ teardown() {
     echo "hello" > docs/note.md
 
     run env \
-        JJ_SYNC_USER="$TEST_USER" \
-        JJ_SYNC_MACHINE="plain-git" \
-        JJ_SYNC_REMOTE="sync" \
-        JJ_SYNC_DOCS="docs" \
-        "$JJ_SYNC" status
+        REFSYNC_USER="$TEST_USER" \
+        REFSYNC_MACHINE="plain-git" \
+        REFSYNC_REMOTE="sync" \
+        REFSYNC_DOCS="docs" \
+        "$REFSYNC" status
 
     [[ "$status" -eq 0 ]]
     # Should show docs section
@@ -391,18 +391,32 @@ teardown() {
     [[ "$output" != *"Revisions"* ]]
 }
 
-@test "V21: revs mode errors in a plain git repo" {
+@test "V21: bare push in plain git repo without REFSYNC_DOCS errors" {
+    create_plain_git_repo "plain-git"
+    cd_to_machine "plain-git"
+
+    run env -u REFSYNC_DOCS \
+        REFSYNC_USER="$TEST_USER" \
+        REFSYNC_MACHINE="plain-git" \
+        REFSYNC_REMOTE="sync" \
+        "$REFSYNC" push
+
+    [[ "$status" -ne 0 ]]
+    [[ "$output" == *"Nothing to sync"* ]]
+}
+
+@test "V21b: --revs in plain git repo errors" {
     create_plain_git_repo "plain-git"
     cd_to_machine "plain-git"
 
     run env \
-        JJ_SYNC_USER="$TEST_USER" \
-        JJ_SYNC_MACHINE="plain-git" \
-        JJ_SYNC_REMOTE="sync" \
-        "$JJ_SYNC" push
+        REFSYNC_USER="$TEST_USER" \
+        REFSYNC_MACHINE="plain-git" \
+        REFSYNC_REMOTE="sync" \
+        "$REFSYNC" push --revs
 
     [[ "$status" -ne 0 ]]
-    [[ "$output" == *"Not in a jj repository"* ]]
+    [[ "$output" == *"Revision sync requires a jj repository"* ]]
 }
 
 @test "V17: Pull only fetches current user's refs" {
@@ -411,20 +425,20 @@ teardown() {
     make_change "test.txt" "alice content" "Alice change"
     local alice_change
     alice_change=$(get_current_change_id)
-    JJ_SYNC_USER="alice@example.com" run_jj_sync "$MACHINE_LAPTOP" push
+    REFSYNC_USER="alice@example.com" run_refsync "$MACHINE_LAPTOP" push
 
     # User B pushes from dev-1
     cd_to_machine "$MACHINE_DEV1"
     make_change "test2.txt" "bob content" "Bob change"
     local bob_change
     bob_change=$(get_current_change_id)
-    JJ_SYNC_USER="bob@example.com" run_jj_sync "$MACHINE_DEV1" push
+    REFSYNC_USER="bob@example.com" run_refsync "$MACHINE_DEV1" push
 
     # Pull as alice on a third machine — should only get alice's refs
     local machine="dev-2"
     create_jj_repo "$machine" "colocated"
     cd_to_machine "$machine"
-    JJ_SYNC_USER="alice@example.com" run_jj_sync "$machine" pull
+    REFSYNC_USER="alice@example.com" run_refsync "$machine" pull
 
     # Alice's change should be visible
     jj_has_change "$alice_change"
@@ -440,11 +454,11 @@ teardown() {
     make_change "src/main.rs" "fn main() {}" "Initial code"
     jj new >/dev/null 2>&1
 
-    # Run jj-sync from a subdirectory
+    # Run refsync from a subdirectory
     mkdir -p src/nested
     cd src/nested
 
-    run_jj_sync "$MACHINE_LAPTOP" push
+    run_refsync "$MACHINE_LAPTOP" push
 
     # Verify bookmark was pushed
     cd_to_machine "$MACHINE_LAPTOP"
@@ -459,11 +473,11 @@ teardown() {
     # Create doc files at repo root
     create_doc_dir "ai/docs" 2
 
-    # Run jj-sync from a subdirectory
+    # Run refsync from a subdirectory
     mkdir -p src/nested
     cd src/nested
 
-    run_jj_sync_with_docs "$MACHINE_LAPTOP" "ai/docs" push --docs
+    run_refsync_with_docs "$MACHINE_LAPTOP" "ai/docs" push --docs
 
     # Verify docs were pushed
     assert_bookmark_exists_remote "sync/$TEST_USER/$MACHINE_LAPTOP/docs"
@@ -479,11 +493,11 @@ teardown() {
     make_change "src/main.rs" "fn main() {}" "Initial code"
     jj new >/dev/null 2>&1
 
-    # Run jj-sync from a subdirectory
+    # Run refsync from a subdirectory
     mkdir -p src/nested
     cd src/nested
 
-    run_jj_sync "$machine" push
+    run_refsync "$machine" push
 
     # Verify bookmark was pushed
     cd_to_machine "$machine"
@@ -496,14 +510,14 @@ teardown() {
     # Push docs from laptop at repo root
     cd_to_machine "$MACHINE_LAPTOP"
     create_doc_dir "ai/docs" 2
-    run_jj_sync_with_docs "$MACHINE_LAPTOP" "ai/docs" push --docs
+    run_refsync_with_docs "$MACHINE_LAPTOP" "ai/docs" push --docs
 
     # Pull on dev-1 from a subdirectory
     cd_to_machine "$MACHINE_DEV1"
     mkdir -p src/nested
     cd src/nested
 
-    run_jj_sync_with_docs "$MACHINE_DEV1" "ai/docs" pull --docs
+    run_refsync_with_docs "$MACHINE_DEV1" "ai/docs" pull --docs
 
     # Verify files extracted at repo root, not subdirectory
     cd_to_machine "$MACHINE_DEV1"
@@ -513,7 +527,7 @@ teardown() {
 @test "V26: --remote without value gives clear error" {
     cd_to_machine "$MACHINE_LAPTOP"
 
-    run run_jj_sync "$MACHINE_LAPTOP" push --remote
+    run run_refsync "$MACHINE_LAPTOP" push --remote
     [[ "$status" -ne 0 ]]
     [[ "$output" == *"--remote requires a value"* ]]
 }
@@ -521,7 +535,7 @@ teardown() {
 @test "V27: --user without value gives clear error" {
     cd_to_machine "$MACHINE_LAPTOP"
 
-    run run_jj_sync "$MACHINE_LAPTOP" push --user
+    run run_refsync "$MACHINE_LAPTOP" push --user
     [[ "$status" -ne 0 ]]
     [[ "$output" == *"--user requires a value"* ]]
 }
@@ -529,7 +543,7 @@ teardown() {
 @test "V28: --machine without value gives clear error" {
     cd_to_machine "$MACHINE_LAPTOP"
 
-    run run_jj_sync "$MACHINE_LAPTOP" push --machine
+    run run_refsync "$MACHINE_LAPTOP" push --machine
     [[ "$status" -ne 0 ]]
     [[ "$output" == *"--machine requires a value"* ]]
 }
@@ -544,13 +558,13 @@ teardown() {
     mkdir -p other/docs
     echo "other doc" > other/docs/note.md
 
-    # Set JJ_SYNC_DOCS to other/docs, but pass ai/docs inline
+    # Set REFSYNC_DOCS to other/docs, but pass ai/docs inline
     run env \
-        JJ_SYNC_USER="$TEST_USER" \
-        JJ_SYNC_MACHINE="$MACHINE_LAPTOP" \
-        JJ_SYNC_REMOTE="sync" \
-        JJ_SYNC_DOCS="other/docs" \
-        "$JJ_SYNC" push --docs ai/docs
+        REFSYNC_USER="$TEST_USER" \
+        REFSYNC_MACHINE="$MACHINE_LAPTOP" \
+        REFSYNC_REMOTE="sync" \
+        REFSYNC_DOCS="other/docs" \
+        "$REFSYNC" push --docs ai/docs
 
     [[ "$status" -eq 0 ]]
     [[ "$output" == *"Pushed"* ]]
@@ -558,11 +572,11 @@ teardown() {
     # Pull on another machine — should only have ai/docs, not other/docs
     cd_to_machine "$MACHINE_DEV1"
     run env \
-        JJ_SYNC_USER="$TEST_USER" \
-        JJ_SYNC_MACHINE="$MACHINE_DEV1" \
-        JJ_SYNC_REMOTE="sync" \
-        JJ_SYNC_DOCS="ai/docs" \
-        "$JJ_SYNC" pull --docs
+        REFSYNC_USER="$TEST_USER" \
+        REFSYNC_MACHINE="$MACHINE_DEV1" \
+        REFSYNC_REMOTE="sync" \
+        REFSYNC_DOCS="ai/docs" \
+        "$REFSYNC" pull --docs
 
     [[ "$status" -eq 0 ]]
     assert_file_exists "ai/docs/note.md"
@@ -576,11 +590,11 @@ teardown() {
     echo "ai doc" > ai/docs/note.md
     echo "claude doc" > .claude/note.md
 
-    run env -u JJ_SYNC_DOCS \
-        JJ_SYNC_USER="$TEST_USER" \
-        JJ_SYNC_MACHINE="$MACHINE_LAPTOP" \
-        JJ_SYNC_REMOTE="sync" \
-        "$JJ_SYNC" push --docs ai/docs .claude
+    run env -u REFSYNC_DOCS \
+        REFSYNC_USER="$TEST_USER" \
+        REFSYNC_MACHINE="$MACHINE_LAPTOP" \
+        REFSYNC_REMOTE="sync" \
+        "$REFSYNC" push --docs ai/docs .claude
 
     [[ "$status" -eq 0 ]]
     [[ "$output" == *"Pushed"* ]]
@@ -593,11 +607,11 @@ teardown() {
     echo "doc" > ai/docs/note.md
 
     # --dry-run should not be consumed as a directory
-    run env -u JJ_SYNC_DOCS \
-        JJ_SYNC_USER="$TEST_USER" \
-        JJ_SYNC_MACHINE="$MACHINE_LAPTOP" \
-        JJ_SYNC_REMOTE="sync" \
-        "$JJ_SYNC" push --docs ai/docs --dry-run
+    run env -u REFSYNC_DOCS \
+        REFSYNC_USER="$TEST_USER" \
+        REFSYNC_MACHINE="$MACHINE_LAPTOP" \
+        REFSYNC_REMOTE="sync" \
+        "$REFSYNC" push --docs ai/docs --dry-run
 
     [[ "$status" -eq 0 ]]
     [[ "$output" == *"dry-run"* ]]
@@ -610,11 +624,11 @@ teardown() {
     echo "doc" > ai/docs/note.md
 
     run env \
-        JJ_SYNC_USER="$TEST_USER" \
-        JJ_SYNC_MACHINE="$MACHINE_LAPTOP" \
-        JJ_SYNC_REMOTE="sync" \
-        JJ_SYNC_DOCS="ai/docs" \
-        "$JJ_SYNC" push --docs
+        REFSYNC_USER="$TEST_USER" \
+        REFSYNC_MACHINE="$MACHINE_LAPTOP" \
+        REFSYNC_REMOTE="sync" \
+        REFSYNC_DOCS="ai/docs" \
+        "$REFSYNC" push --docs
 
     [[ "$status" -eq 0 ]]
     [[ "$output" == *"Pushed"* ]]
@@ -623,15 +637,15 @@ teardown() {
 @test "V33: --docs with no inline args and no env var errors" {
     cd_to_machine "$MACHINE_LAPTOP"
 
-    run env -u JJ_SYNC_DOCS \
-        JJ_SYNC_USER="$TEST_USER" \
-        JJ_SYNC_MACHINE="$MACHINE_LAPTOP" \
-        JJ_SYNC_REMOTE="sync" \
-        "$JJ_SYNC" push --docs
+    run env -u REFSYNC_DOCS \
+        REFSYNC_USER="$TEST_USER" \
+        REFSYNC_MACHINE="$MACHINE_LAPTOP" \
+        REFSYNC_REMOTE="sync" \
+        "$REFSYNC" push --docs
 
     [[ "$status" -ne 0 ]]
     [[ "$output" == *"No doc directories specified"* ]]
-    [[ "$output" == *"jj-sync push --docs ai/docs .claude"* ]]
+    [[ "$output" == *"refsync push --docs ai/docs .claude"* ]]
 }
 
 @test "V34: Doc sync skips git-tracked files" {
@@ -650,7 +664,7 @@ teardown() {
     echo "local notes" > .claude/settings.local.json
 
     # Push docs — should only include settings.local.json (not tracked files)
-    run_jj_sync_with_docs "$MACHINE_LAPTOP" ".claude" push --docs
+    run_refsync_with_docs "$MACHINE_LAPTOP" ".claude" push --docs
 
     # Pull on another machine that has its own tracked settings.json
     cd_to_machine "$MACHINE_DEV1"
@@ -663,7 +677,7 @@ teardown() {
     # Add a local untracked file that should be cleaned up by pull
     echo "old local" > .claude/old-untracked.md
 
-    run_jj_sync_with_docs "$MACHINE_DEV1" ".claude" pull --docs
+    run_refsync_with_docs "$MACHINE_DEV1" ".claude" pull --docs
 
     # Tracked file should still have dev1's content (not overwritten)
     assert_file_equals ".claude/settings.json" '{"key": "dev1-value"}'
@@ -698,7 +712,7 @@ teardown() {
     echo "local profile" > .claude/config/profiles/custom.local.json
 
     # Push docs
-    run_jj_sync_with_docs "$MACHINE_LAPTOP" ".claude" push --docs
+    run_refsync_with_docs "$MACHINE_LAPTOP" ".claude" push --docs
 
     # Pull on another machine with its own tracked files
     cd_to_machine "$MACHINE_DEV1"
@@ -709,7 +723,7 @@ teardown() {
     jj file track .claude/config/settings.json .claude/config/profiles/default.json .claude/.gitignore >/dev/null 2>&1
     jj commit -m "Add nested tracked files on dev1" >/dev/null 2>&1
 
-    run_jj_sync_with_docs "$MACHINE_DEV1" ".claude" pull --docs
+    run_refsync_with_docs "$MACHINE_DEV1" ".claude" pull --docs
 
     # Nested tracked files should keep dev1's content
     assert_file_equals ".claude/config/settings.json" '{"global": false}'

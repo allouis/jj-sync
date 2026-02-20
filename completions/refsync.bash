@@ -1,13 +1,13 @@
-# jj-sync bash completion
+# refsync bash completion
 # Source this file or add to ~/.bash_completion.d/
 
-_jj_sync() {
+_refsync() {
     local cur prev words cword
     _init_completion || return
 
     local commands="push pull status gc clean help"
     local global_opts="--help --version --dry-run --verbose --remote --user --machine --force"
-    local push_pull_opts="--docs --both"
+    local push_pull_opts="--docs --revs --both"
 
     # Handle command completion
     if [[ $cword -eq 1 ]]; then
@@ -49,4 +49,4 @@ _jj_sync() {
     fi
 }
 
-complete -F _jj_sync jj-sync
+complete -F _refsync refsync
