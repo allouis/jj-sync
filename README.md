@@ -19,14 +19,6 @@ curl -o ~/.local/bin/jj-sync https://raw.githubusercontent.com/allouis/jj-sync/m
 chmod +x ~/.local/bin/jj-sync
 ```
 
-**Clone and install:**
-
-```bash
-git clone https://github.com/allouis/jj-sync
-cd jj-sync
-./install.sh  # copies to ~/.local/bin
-```
-
 <details>
 <summary>Nix flake</summary>
 
@@ -46,6 +38,30 @@ home.packages = [ inputs.jj-sync.packages.${system}.default ];
 ```
 
 </details>
+
+### Shell completions
+
+Add one of the following to your shell config:
+
+**Bash** (`~/.bashrc`):
+
+```bash
+eval "$(jj-sync completions bash)"
+```
+
+**Zsh** (`~/.zshrc`):
+
+```zsh
+eval "$(jj-sync completions zsh)"
+```
+
+**Fish** (`~/.config/fish/config.fish`):
+
+```fish
+jj-sync completions fish | source
+```
+
+Nix flake users get completions automatically.
 
 ## Quick start
 
@@ -83,12 +99,13 @@ Sync WIP jj revisions and gitignored docs across machines.
 (Doc sync works in any git repo; revision sync requires jj.)
 
 Commands:
-  push      Push to sync remote
-  pull      Pull from sync remote
-  status    Show what would be synced
-  gc        Garbage collect stale sync bookmarks and doc chains
-  clean     Remove ALL sync state (local + remote)
-  help      Show this help
+  push         Push to sync remote
+  pull         Pull from sync remote
+  status       Show what would be synced
+  gc           Garbage collect stale sync bookmarks and doc chains
+  clean        Remove ALL sync state (local + remote)
+  completions  Print shell completions (bash, zsh, fish)
+  help         Show this help
 
 Flags:
   --docs [dir...]  Sync docs only (dirs override JJ_SYNC_DOCS)

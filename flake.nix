@@ -48,14 +48,14 @@
                 pkgs.gnutar
               ]}
 
-            # Install completions
+            # Generate completions from the installed script
             mkdir -p $out/share/bash-completion/completions
             mkdir -p $out/share/zsh/site-functions
             mkdir -p $out/share/fish/vendor_completions.d
 
-            cp completions/jj-sync.bash $out/share/bash-completion/completions/jj-sync
-            cp completions/_jj-sync $out/share/zsh/site-functions/_jj-sync
-            cp completions/jj-sync.fish $out/share/fish/vendor_completions.d/jj-sync.fish
+            $out/bin/jj-sync completions bash > $out/share/bash-completion/completions/jj-sync
+            $out/bin/jj-sync completions zsh  > $out/share/zsh/site-functions/_jj-sync
+            $out/bin/jj-sync completions fish > $out/share/fish/vendor_completions.d/jj-sync.fish
           '';
 
           meta = with pkgs.lib; {

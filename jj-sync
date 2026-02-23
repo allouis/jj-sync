@@ -1522,12 +1522,13 @@ Sync WIP jj revisions and gitignored docs across machines.
 (Doc sync works in any git repo; revision sync requires jj.)
 
 Commands:
-  push      Push to sync remote
-  pull      Pull from sync remote
-  status    Show what would be synced
-  gc        Garbage collect stale sync bookmarks and doc chains
-  clean     Remove ALL sync state (local + remote)
-  help      Show this help
+  push         Push to sync remote
+  pull         Pull from sync remote
+  status       Show what would be synced
+  gc           Garbage collect stale sync bookmarks and doc chains
+  clean        Remove ALL sync state (local + remote)
+  completions  Print shell completions (bash, zsh, fish)
+  help         Show this help
 
 Flags:
   --docs [dir...]  Sync docs only (dirs override JJ_SYNC_DOCS)
@@ -1559,8 +1560,192 @@ Examples:
 EOF
 }
 
+cmd_completions() {
+    local shell="${1:-}"
+    case "$shell" in
+        bash)
+            cat <<'BASH_COMPLETIONS'
+_jj_sync() {
+    local cur prev words cword
+    _init_completion || return
+
+    local commands="push pull status gc clean completions help"
+    local global_opts="--help --dry-run --verbose --remote --user --machine --force"
+    local push_pull_opts="--docs --both"
+
+    # Handle command completion
+    if [[ $cword -eq 1 ]]; then
+        COMPREPLY=($(compgen -W "$commands $global_opts" -- "$cur"))
+        return
+    fi
+
+    local cmd="${words[1]}"
+
+    case "$cmd" in
+        push|pull)
+            COMPREPLY=($(compgen -W "$push_pull_opts $global_opts" -- "$cur"))
+            ;;
+        completions)
+            COMPREPLY=($(compgen -W "bash zsh fish" -- "$cur"))
+            ;;
+        gc|clean)
+            COMPREPLY=($(compgen -W "--force $global_opts" -- "$cur"))
+            ;;
+        status|help)
+            COMPREPLY=($(compgen -W "$global_opts" -- "$cur"))
+            ;;
+        --remote)
+            # Complete with git remote names
+            if [[ -d .git ]] || [[ -d .jj ]]; then
+                local remotes
+                remotes=$(git remote 2>/dev/null)
+                COMPREPLY=($(compgen -W "$remotes" -- "$cur"))
+            fi
+            ;;
+        *)
+            COMPREPLY=($(compgen -W "$commands $global_opts" -- "$cur"))
+            ;;
+    esac
+
+    # Handle --remote= style
+    if [[ "$cur" == --remote=* ]]; then
+        local prefix="${cur%%=*}="
+        local remotes
+        remotes=$(git remote 2>/dev/null)
+        COMPREPLY=($(compgen -P "$prefix" -W "$remotes" -- "${cur#*=}"))
+    fi
+}
+
+complete -F _jj_sync jj-sync
+BASH_COMPLETIONS
+            ;;
+        zsh)
+            cat <<'ZSH_COMPLETIONS'
+#compdef jj-sync
+
+_jj_sync() {
+    local -a commands
+    local -a global_opts
+
+    commands=(
+        'push:Push WIP revisions and/or docs to sync remote'
+        'pull:Pull WIP revisions and/or docs from sync remote'
+        'status:Show sync status'
+        'gc:Garbage collect old bookmarks'
+        'clean:Remove all sync state (requires --force)'
+        'completions:Print shell completions'
+        'help:Show help message'
+    )
+
+    global_opts=(
+        '--help[Show help message]'
+        '--dry-run[Show what would be done without doing it]'
+        '--verbose[Show verbose output]'
+        '--remote=[Specify sync remote (auto-detected if one remote)]:remote:_jj_sync_remotes'
+        '--user=[Specify user identity for ref namespacing]:user:'
+        '--machine=[Specify machine name]:machine:'
+    )
+
+    local -a push_pull_opts
+    push_pull_opts=(
+        '--docs[Sync docs only (dirs override JJ_SYNC_DOCS)]'
+        '--both[Sync revisions + docs (dirs override JJ_SYNC_DOCS)]'
+    )
+
+    _arguments -C \
+        '1:command:->command' \
+        '*::arg:->args'
+
+    case "$state" in
+        command)
+            _describe -t commands 'jj-sync command' commands
+            _describe -t options 'options' global_opts
+            ;;
+        args)
+            case "${words[1]}" in
+                push|pull)
+                    _arguments \
+                        "${global_opts[@]}" \
+                        "${push_pull_opts[@]}" \
+                        '*:directory:_files -/'
+                    ;;
+                completions)
+                    _arguments '1:shell:(bash zsh fish)'
+                    ;;
+                gc|clean)
+                    _arguments \
+                        "${global_opts[@]}" \
+                        '--force[Force operation without confirmation]'
+                    ;;
+                status|help)
+                    _arguments "${global_opts[@]}"
+                    ;;
+            esac
+            ;;
+    esac
+}
+
+_jj_sync_remotes() {
+    local -a remotes
+    if [[ -d .git ]] || [[ -d .jj ]]; then
+        remotes=(${(f)"$(git remote 2>/dev/null)"})
+        _describe -t remotes 'git remote' remotes
+    fi
+}
+
+_jj_sync "$@"
+ZSH_COMPLETIONS
+            ;;
+        fish)
+            cat <<'FISH_COMPLETIONS'
+# Disable file completion by default
+complete -c jj-sync -f
+
+# Commands
+complete -c jj-sync -n __fish_use_subcommand -a push -d 'Push WIP revisions and/or docs'
+complete -c jj-sync -n __fish_use_subcommand -a pull -d 'Pull WIP revisions and/or docs'
+complete -c jj-sync -n __fish_use_subcommand -a status -d 'Show sync status'
+complete -c jj-sync -n __fish_use_subcommand -a gc -d 'Garbage collect old bookmarks'
+complete -c jj-sync -n __fish_use_subcommand -a clean -d 'Remove all sync state'
+complete -c jj-sync -n __fish_use_subcommand -a completions -d 'Print shell completions'
+complete -c jj-sync -n __fish_use_subcommand -a help -d 'Show help'
+
+# Global options
+complete -c jj-sync -l help -d 'Show help message'
+complete -c jj-sync -l dry-run -d 'Show what would be done'
+complete -c jj-sync -l verbose -d 'Show verbose output'
+complete -c jj-sync -l remote -d 'Specify sync remote' -xa '(__fish_git_remotes)'
+complete -c jj-sync -l user -d 'Specify user identity for ref namespacing'
+complete -c jj-sync -l machine -d 'Specify machine name'
+
+# Push/pull specific options
+complete -c jj-sync -n '__fish_seen_subcommand_from push pull' -l docs -d 'Sync docs only'
+complete -c jj-sync -n '__fish_seen_subcommand_from push pull' -l both -d 'Sync revisions + docs'
+
+# GC/clean specific options
+complete -c jj-sync -n '__fish_seen_subcommand_from gc clean' -l force -d 'Skip confirmation'
+
+# Completions subcommand
+complete -c jj-sync -n '__fish_seen_subcommand_from completions' -a 'bash zsh fish' -d 'Shell type'
+
+# Helper function for git remotes
+function __fish_git_remotes
+    if test -d .git; or test -d .jj
+        git remote 2>/dev/null
+    end
+end
+FISH_COMPLETIONS
+            ;;
+        *)
+            echo "Usage: jj-sync completions <bash|zsh|fish>" >&2
+            exit 1
+            ;;
+    esac
+}
+
 main() {
     local cmd=""
+    local completions_shell=""
 
     # Parse arguments (must be done in main, not subshell, to preserve globals)
     while [[ $# -gt 0 ]]; do
@@ -1568,6 +1753,14 @@ main() {
             push|pull|status|gc|clean|help)
                 cmd="$1"
                 shift
+                ;;
+            completions)
+                cmd="completions"
+                shift
+                if [[ $# -gt 0 ]] && [[ "$1" != -* ]]; then
+                    completions_shell="$1"
+                    shift
+                fi
                 ;;
             --docs)
                 SYNC_MODE="docs"
@@ -1637,6 +1830,12 @@ main() {
     # Handle help early
     if [[ "$cmd" == "help" ]] || [[ -z "$cmd" ]]; then
         usage
+        exit 0
+    fi
+
+    # Handle completions early (no repo or env required)
+    if [[ "$cmd" == "completions" ]]; then
+        cmd_completions "$completions_shell"
         exit 0
     fi
 
