@@ -1,5 +1,5 @@
 {
-  description = "jj-sync - Sync WIP jj revisions and gitignored docs across machines";
+  description = "ref-sync - Sync WIP jj revisions and gitignored docs across machines";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -11,8 +11,8 @@
       let
         pkgs = nixpkgs.legacyPackages.${system};
 
-        jj-sync = pkgs.stdenv.mkDerivation {
-          pname = "jj-sync";
+        ref-sync = pkgs.stdenv.mkDerivation {
+          pname = "ref-sync";
           version = "0.1.0";
 
           src = ./.;
@@ -34,11 +34,11 @@
             mkdir -p $out/bin
 
             # Install the self-contained script
-            cp jj-sync $out/bin/jj-sync
-            chmod +x $out/bin/jj-sync
+            cp ref-sync $out/bin/ref-sync
+            chmod +x $out/bin/ref-sync
 
             # Wrap with runtime dependencies in PATH
-            wrapProgram $out/bin/jj-sync \
+            wrapProgram $out/bin/ref-sync \
               --prefix PATH : ${pkgs.lib.makeBinPath [
                 pkgs.git
                 pkgs.jujutsu
@@ -53,9 +53,9 @@
             mkdir -p $out/share/zsh/site-functions
             mkdir -p $out/share/fish/vendor_completions.d
 
-            $out/bin/jj-sync completions bash > $out/share/bash-completion/completions/jj-sync
-            $out/bin/jj-sync completions zsh  > $out/share/zsh/site-functions/_jj-sync
-            $out/bin/jj-sync completions fish > $out/share/fish/vendor_completions.d/jj-sync.fish
+            $out/bin/ref-sync completions bash > $out/share/bash-completion/completions/ref-sync
+            $out/bin/ref-sync completions zsh  > $out/share/zsh/site-functions/_ref-sync
+            $out/bin/ref-sync completions fish > $out/share/fish/vendor_completions.d/ref-sync.fish
           '';
 
           meta = with pkgs.lib; {
@@ -68,8 +68,8 @@
         };
       in
       {
-        packages.default = jj-sync;
-        packages.jj-sync = jj-sync;
+        packages.default = ref-sync;
+        packages.ref-sync = ref-sync;
 
         devShells.default = pkgs.mkShell {
           buildInputs = [
@@ -86,7 +86,7 @@
           ];
 
           shellHook = ''
-            echo "jj-sync dev shell"
+            echo "ref-sync dev shell"
             echo "  bats:       $(bats --version)"
             echo "  shellcheck: $(shellcheck --version | head -2 | tail -1)"
             echo "  shfmt:      $(shfmt --version)"
@@ -94,7 +94,7 @@
             echo "  git:        $(git --version)"
             echo ""
             echo "Run 'bats tests/' to run tests"
-            echo "Run 'shellcheck jj-sync' to lint"
+            echo "Run 'shellcheck ref-sync' to lint"
           '';
         };
       }

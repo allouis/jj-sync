@@ -18,7 +18,7 @@ teardown() {
     make_change "test.txt" "hello world" "Test change"
 
     # Push
-    run_jj_sync "$MACHINE_LAPTOP" push
+    run_ref_sync "$MACHINE_LAPTOP" push
 
     # Verify bookmark exists on remote
     local bookmark_count
@@ -33,7 +33,7 @@ teardown() {
     make_change "test.txt" "hello world" "Test change"
 
     # Push
-    run_jj_sync "$MACHINE_LAPTOP" push
+    run_ref_sync "$MACHINE_LAPTOP" push
 
     # Verify no sync bookmarks exist locally
     cd_to_machine "$MACHINE_LAPTOP"
@@ -48,10 +48,10 @@ teardown() {
     make_change "test.txt" "hello from laptop" "Laptop change"
     local change_id
     change_id=$(get_current_change_id)
-    run_jj_sync "$MACHINE_LAPTOP" push
+    run_ref_sync "$MACHINE_LAPTOP" push
 
     # Pull on dev-1
-    run_jj_sync "$MACHINE_DEV1" pull
+    run_ref_sync "$MACHINE_DEV1" pull
 
     # Verify dev-1 can see the change
     cd_to_machine "$MACHINE_DEV1"
@@ -62,10 +62,10 @@ teardown() {
     # Create and push from laptop
     cd_to_machine "$MACHINE_LAPTOP"
     make_change "test.txt" "hello from laptop" "Laptop change"
-    run_jj_sync "$MACHINE_LAPTOP" push
+    run_ref_sync "$MACHINE_LAPTOP" push
 
     # Pull on dev-1
-    run_jj_sync "$MACHINE_DEV1" pull
+    run_ref_sync "$MACHINE_DEV1" pull
 
     # Verify bookmarks still exist on remote (for other machines to pull)
     local bookmark_count
@@ -80,22 +80,22 @@ teardown() {
     make_change "test.txt" "version 1" "Original"
     local change_id
     change_id=$(get_current_change_id)
-    run_jj_sync "$MACHINE_LAPTOP" push
+    run_ref_sync "$MACHINE_LAPTOP" push
 
     # Record the commit SHA on remote
     local sha_before
-    sha_before=$(git ls-remote "$TEST_DIR/remote.git" "refs/jj-sync/sync/$TEST_USER/$MACHINE_LAPTOP/revs/$change_id" | cut -f1)
+    sha_before=$(git ls-remote "$TEST_DIR/remote.git" "refs/ref-sync/sync/$TEST_USER/$MACHINE_LAPTOP/revs/$change_id" | cut -f1)
     [[ -n "$sha_before" ]]
 
     # Amend the change (new content, same change_id)
     echo "version 2" > test.txt
 
     # Push again
-    run_jj_sync "$MACHINE_LAPTOP" push
+    run_ref_sync "$MACHINE_LAPTOP" push
 
     # Bookmark should point to a different commit now
     local sha_after
-    sha_after=$(git ls-remote "$TEST_DIR/remote.git" "refs/jj-sync/sync/$TEST_USER/$MACHINE_LAPTOP/revs/$change_id" | cut -f1)
+    sha_after=$(git ls-remote "$TEST_DIR/remote.git" "refs/ref-sync/sync/$TEST_USER/$MACHINE_LAPTOP/revs/$change_id" | cut -f1)
     [[ -n "$sha_after" ]]
     [[ "$sha_before" != "$sha_after" ]]
 }
@@ -106,7 +106,7 @@ teardown() {
     make_change "test.txt" "hello" "Dry run test"
 
     # Push with --dry-run
-    run run_jj_sync "$MACHINE_LAPTOP" push --dry-run
+    run run_ref_sync "$MACHINE_LAPTOP" push --dry-run
     [[ "$status" -eq 0 ]]
 
     # No bookmarks should exist on remote
@@ -128,7 +128,7 @@ teardown() {
     jj new >/dev/null 2>&1
     make_change "test2.txt" "wip content" "WIP change"
 
-    run_jj_sync "$MACHINE_LAPTOP" push
+    run_ref_sync "$MACHINE_LAPTOP" push
 
     # Only the WIP change should be pushed (trunk commit is immutable)
     local count
@@ -156,7 +156,7 @@ teardown() {
     jj new >/dev/null 2>&1
     make_change "mine.txt" "my content" "My change"
 
-    run_jj_sync "$MACHINE_LAPTOP" push
+    run_ref_sync "$MACHINE_LAPTOP" push
 
     # Only our change should be pushed (other author excluded by mine())
     local count
@@ -175,7 +175,7 @@ teardown() {
     echo "documentation" > docs/note.md
 
     # Push with --both
-    JJ_SYNC_DOCS="docs" run_jj_sync "$MACHINE_LAPTOP" push --both
+    REF_SYNC_DOCS="docs" run_ref_sync "$MACHINE_LAPTOP" push --both
 
     # Verify revisions were pushed
     local rev_count
@@ -200,7 +200,7 @@ teardown() {
     jj new >/dev/null 2>&1
 
     # Push both
-    run_jj_sync "$MACHINE_LAPTOP" push
+    run_ref_sync "$MACHINE_LAPTOP" push
 
     # Should have 2 bookmarks
     local count_before
@@ -211,7 +211,7 @@ teardown() {
     jj abandon "$abandon_change" >/dev/null 2>&1
 
     # Push again — stale bookmark for abandoned change should be removed
-    run_jj_sync "$MACHINE_LAPTOP" push
+    run_ref_sync "$MACHINE_LAPTOP" push
 
     # Should now have 1 bookmark (the kept change)
     local count_after

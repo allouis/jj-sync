@@ -1,4 +1,4 @@
-# jj-sync — Implementation Plan
+# ref-sync — Implementation Plan
 
 ## Problem Statement
 
@@ -42,18 +42,18 @@ jj git remote add personal <url>
 
 ### Namespace Convention
 
-All sync state lives under a `refs/jj-sync/` namespace, namespaced by user and machine:
+All sync state lives under a `refs/ref-sync/` namespace, namespaced by user and machine:
 
 ```
-refs/jj-sync/sync/<user>/<machine>/revs/<change_id_prefix>   # WIP revisions
-refs/jj-sync/sync/<user>/<machine>/docs                       # gitignored doc files
+refs/ref-sync/sync/<user>/<machine>/revs/<change_id_prefix>   # WIP revisions
+refs/ref-sync/sync/<user>/<machine>/docs                       # gitignored doc files
 ```
 
-**Important**: We use `refs/jj-sync/` instead of regular git branches (`refs/heads/`) to avoid jj importing them as bookmarks. If synced commits were imported as bookmarks, jj would mark them as immutable, defeating the purpose of syncing WIP changes.
+**Important**: We use `refs/ref-sync/` instead of regular git branches (`refs/heads/`) to avoid jj importing them as bookmarks. If synced commits were imported as bookmarks, jj would mark them as immutable, defeating the purpose of syncing WIP changes.
 
-The user identity is resolved from `jj config get user.email`, `git config user.email`, or the `JJ_SYNC_USER` env var. The machine name is auto-detected from `hostname`. Both can be overridden via config or flags.
+The user identity is resolved from `jj config get user.email`, `git config user.email`, or the `REF_SYNC_USER` env var. The machine name is auto-detected from `hostname`. Both can be overridden via config or flags.
 
-The remote is auto-detected when the repo has exactly one git remote. If multiple remotes exist, the user must specify which one via `--remote` or `JJ_SYNC_REMOTE`.
+The remote is auto-detected when the repo has exactly one git remote. If multiple remotes exist, the user must specify which one via `--remote` or `REF_SYNC_REMOTE`.
 
 ---
 
@@ -132,7 +132,7 @@ Use git's low-level commands to create standalone commits containing only the do
 4. Fetch current sync/<machine>/docs commit from remote (if exists)
 5. `git commit-tree` with parent = previous docs commit (if any)
      If no previous commit exists, create a parentless (orphan) commit
-     Commit message: "jj-sync docs <ISO timestamp>"
+     Commit message: "ref-sync docs <ISO timestamp>"
 6. Update ref: sync/<machine>/docs → new commit
 7. `jj git import` to make jj aware of the ref
 8. Push: jj git push --remote personal --bookmark sync/<machine>/docs --allow-new
@@ -226,27 +226,27 @@ All configuration is via environment variables. Set them in your shell profile (
 
 ```bash
 # Space-separated directories to sync as docs (required for --docs/--both)
-JJ_SYNC_DOCS="ai/docs .claude plans"
+REF_SYNC_DOCS="ai/docs .claude plans"
 
 # Which git remote to use for sync (auto-detected if repo has one remote)
-JJ_SYNC_REMOTE=origin
+REF_SYNC_REMOTE=origin
 
 # User identity for ref namespacing (default: jj/git user.email)
-JJ_SYNC_USER=you@example.com
+REF_SYNC_USER=you@example.com
 
 # Machine name override (default: $(hostname))
-JJ_SYNC_MACHINE=laptop
+REF_SYNC_MACHINE=laptop
 
 # GC threshold for revision bookmarks in days (default: 7)
-JJ_SYNC_GC_REVS_DAYS=7
+REF_SYNC_GC_REVS_DAYS=7
 
 # GC threshold for docs commit chain length (default: 50)
-JJ_SYNC_GC_DOCS_MAX_CHAIN=50
+REF_SYNC_GC_DOCS_MAX_CHAIN=50
 ```
 
 ### Required vs Optional
 
-- `JJ_SYNC_DOCS` — required when using `--docs` or `--both`, otherwise ignored
+- `REF_SYNC_DOCS` — required when using `--docs` or `--both`, otherwise ignored
 - All others — optional with sensible defaults
 
 ---
@@ -254,7 +254,7 @@ JJ_SYNC_GC_DOCS_MAX_CHAIN=50
 ## CLI Interface
 
 ```
-jj-sync <command> [options]
+ref-sync <command> [options]
 
 Commands:
   push              Push to personal remote
@@ -266,8 +266,8 @@ Commands:
   help              Show help
 
 Flags:
-  --docs            Sync docs only (requires JJ_SYNC_DOCS)
-  --both            Sync revisions + docs (requires JJ_SYNC_DOCS)
+  --docs            Sync docs only (requires REF_SYNC_DOCS)
+  --both            Sync revisions + docs (requires REF_SYNC_DOCS)
                     Default (no flag): sync revisions only
 
 Options:
@@ -283,27 +283,27 @@ Options:
 
 | Command | What syncs |
 |---------|-----------|
-| `jj-sync push` | Revisions only |
-| `jj-sync push --docs` | Docs only |
-| `jj-sync push --both` | Revisions + docs |
-| `jj-sync pull` | Revisions only |
-| `jj-sync pull --docs` | Docs only |
-| `jj-sync pull --both` | Revisions + docs |
+| `ref-sync push` | Revisions only |
+| `ref-sync push --docs` | Docs only |
+| `ref-sync push --both` | Revisions + docs |
+| `ref-sync pull` | Revisions only |
+| `ref-sync pull --docs` | Docs only |
+| `ref-sync pull --both` | Revisions + docs |
 
-Using `--docs` or `--both` without `JJ_SYNC_DOCS` set is an error:
+Using `--docs` or `--both` without `REF_SYNC_DOCS` set is an error:
 ```
-Error: --docs requires JJ_SYNC_DOCS environment variable
-Hint: export JJ_SYNC_DOCS="ai/docs .claude"
+Error: --docs requires REF_SYNC_DOCS environment variable
+Hint: export REF_SYNC_DOCS="ai/docs .claude"
 ```
 
 ### Command Details
 
-**`jj-sync init`**:
-Interactive first-time setup for a repo. Verifies `git` >= 2.38 and `jj` are installed, prompts for remote URL, creates remote. Prints instructions for setting env vars (`JJ_SYNC_DOCS`, etc.) in shell profile. Fails with a clear error if version requirements are not met.
+**`ref-sync init`**:
+Interactive first-time setup for a repo. Verifies `git` >= 2.38 and `jj` are installed, prompts for remote URL, creates remote. Prints instructions for setting env vars (`REF_SYNC_DOCS`, etc.) in shell profile. Fails with a clear error if version requirements are not met.
 
-**`jj-sync status`**:
+**`ref-sync status`**:
 ```
-jj-sync status
+ref-sync status
 
 Remote: personal → git@github.com:fabien/ghost-sync.git
 Machine: laptop
@@ -317,7 +317,7 @@ Remote revisions:
   sync/laptop/revs/*     3 bookmarks (last push: 2h ago)
   sync/dev-1/revs/*      7 bookmarks (last push: 1d ago)
 
-Docs (JJ_SYNC_DOCS="ai/docs .claude"):
+Docs (REF_SYNC_DOCS="ai/docs .claude"):
   ai/docs/     12 files
   .claude/     3 files
 
@@ -326,14 +326,14 @@ Remote docs:
   sync/dev-1/docs        last push: 5h ago (diverged — will merge on pull)
 ```
 
-If `JJ_SYNC_DOCS` is not set, the docs section shows:
+If `REF_SYNC_DOCS` is not set, the docs section shows:
 ```
-Docs: not configured (set JJ_SYNC_DOCS to enable)
+Docs: not configured (set REF_SYNC_DOCS to enable)
 ```
 
-**`jj-sync gc`**:
+**`ref-sync gc`**:
 ```
-jj-sync gc
+ref-sync gc
 
 Revisions:
   Removing 5 bookmarks older than 7 days from sync/dev-1/revs/*
@@ -349,8 +349,8 @@ Docs:
 ## File Structure
 
 ```
-jj-sync/
-├── jj-sync                      # Main entry point (bash)
+ref-sync/
+├── ref-sync                      # Main entry point (bash)
 ├── lib/
 │   ├── env.sh                   # Env var loading + defaults
 │   ├── revisions.sh             # push_revisions, pull_revisions
@@ -366,9 +366,9 @@ jj-sync/
 │   ├── test_env.bats            # Env var handling tests
 │   └── test_edge_cases.bats     # Error handling, partial failures
 ├── completions/
-│   ├── jj-sync.bash             # Bash completions
-│   ├── _jj-sync                 # Zsh completions
-│   └── jj-sync.fish             # Fish completions
+│   ├── ref-sync.bash             # Bash completions
+│   ├── _ref_sync                 # Zsh completions
+│   └── ref-sync.fish             # Fish completions
 ├── flake.nix                    # Nix flake for dev environment
 ├── flake.lock                   # Nix flake lockfile
 ├── .envrc                       # direnv configuration
@@ -398,14 +398,14 @@ setup_test_env() {
     cd "$TEST_DIR/laptop"
     jj git init --colocate
     jj git remote add personal "$TEST_DIR/remote.git"
-    export JJ_SYNC_MACHINE=laptop
+    export REF_SYNC_MACHINE=laptop
 
     # Create "dev-1" working copy with jj (non-colocated)
     mkdir "$TEST_DIR/dev-1"
     cd "$TEST_DIR/dev-1"
     jj git init
     jj git remote add personal "$TEST_DIR/remote.git"
-    export JJ_SYNC_MACHINE=dev-1
+    export REF_SYNC_MACHINE=dev-1
 }
 ```
 
@@ -473,13 +473,13 @@ setup_test_env() {
 | # | Test | Description |
 |---|------|-------------|
 | V1 | Defaults work | No env vars — uses default remote, hostname for machine |
-| V2 | Machine name from hostname | Without `JJ_SYNC_MACHINE`, uses `$(hostname)` |
-| V3 | Remote override | `JJ_SYNC_REMOTE=other` uses different remote |
-| V4 | Machine override | `JJ_SYNC_MACHINE=mybox` overrides hostname |
-| V5 | Docs flag without env | `--docs` without `JJ_SYNC_DOCS` — clear error |
-| V6 | Both flag without env | `--both` without `JJ_SYNC_DOCS` — clear error |
-| V7 | Docs dirs parsed | `JJ_SYNC_DOCS="a b c"` correctly splits into 3 dirs |
-| V8 | Empty docs env | `JJ_SYNC_DOCS=""` with `--docs` — clear error |
+| V2 | Machine name from hostname | Without `REF_SYNC_MACHINE`, uses `$(hostname)` |
+| V3 | Remote override | `REF_SYNC_REMOTE=other` uses different remote |
+| V4 | Machine override | `REF_SYNC_MACHINE=mybox` overrides hostname |
+| V5 | Docs flag without env | `--docs` without `REF_SYNC_DOCS` — clear error |
+| V6 | Both flag without env | `--both` without `REF_SYNC_DOCS` — clear error |
+| V7 | Docs dirs parsed | `REF_SYNC_DOCS="a b c"` correctly splits into 3 dirs |
+| V8 | Empty docs env | `REF_SYNC_DOCS=""` with `--docs` — clear error |
 
 #### Error Handling
 
@@ -508,7 +508,7 @@ Get the basic push/pull loop working for a two-machine case.
 3. `lib/revisions.sh` — push_revisions, pull_revisions (per-machine namespace)
 4. `lib/docs.sh` — push_docs, pull_docs (single-machine, no merge yet)
 5. `lib/git-plumbing.sh` — helpers for tree/commit creation, ref management
-6. `jj-sync` — main entry point, command routing, flag parsing
+6. `ref-sync` — main entry point, command routing, flag parsing
 7. `tests/test_revisions.sh` — tests R1–R8
 8. `tests/test_docs.sh` — tests D1–D8
 9. `tests/test_env.sh` — tests V1–V8
@@ -529,10 +529,10 @@ Add proper multi-machine support with doc merging.
 ### Phase 3: Lifecycle Management
 
 1. `lib/gc.sh` — garbage collection for revs and docs
-2. `jj-sync gc` command
-3. `jj-sync clean` command (nuclear option)
-4. `jj-sync status` with remote state inspection
-5. `jj-sync init` interactive setup
+2. `ref-sync gc` command
+3. `ref-sync clean` command (nuclear option)
+4. `ref-sync status` with remote state inspection
+5. `ref-sync init` interactive setup
 6. `tests/test_gc.sh` — tests G1–G5
 7. `tests/test_edge_cases.sh` — tests E1–E8
 
@@ -619,13 +619,13 @@ bats tests/ --verbose-run
 ### Linting
 
 ```bash
-shellcheck jj-sync lib/*.sh
+shellcheck ref-sync lib/*.sh
 ```
 
 ### Formatting
 
 ```bash
-shfmt -w jj-sync lib/*.sh
+shfmt -w ref-sync lib/*.sh
 ```
 
 ---
@@ -643,9 +643,9 @@ shfmt -w jj-sync lib/*.sh
 
 4. **Merge commit author** — use the pulling machine's git user config. Not important.
 
-5. **`jj-sync init` does not create remote repos** — user creates the repo manually. Out of scope.
+5. **`ref-sync init` does not create remote repos** — user creates the repo manually. Out of scope.
 
-6. **Single email across machines** — `mine()` revset works without override. Drop the `JJ_SYNC_REVSET` config option.
+6. **Single email across machines** — `mine()` revset works without override. Drop the `REF_SYNC_REVSET` config option.
 
 ---
 

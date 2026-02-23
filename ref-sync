@@ -7,7 +7,7 @@ set -euo pipefail
 DRY_RUN=false
 VERBOSE=false
 FORCE=false
-SYNC_MODE="revs"  # revs, docs, both
+SYNC_MODE=""  # empty=auto, revs, docs, both
 
 # Override options
 OPT_REMOTE=""
@@ -19,15 +19,15 @@ GIT_DIR=""
 GIT_WORK_TREE=""
 
 # Configuration values (populated by load_env)
-JJ_SYNC_REMOTE="${JJ_SYNC_REMOTE:-}"
-JJ_SYNC_USER="${JJ_SYNC_USER:-}"
-JJ_SYNC_MACHINE="${JJ_SYNC_MACHINE:-}"
-JJ_SYNC_DOCS="${JJ_SYNC_DOCS:-}"
-JJ_SYNC_GC_REVS_DAYS="${JJ_SYNC_GC_REVS_DAYS:-}"
-JJ_SYNC_GC_DOCS_MAX_CHAIN="${JJ_SYNC_GC_DOCS_MAX_CHAIN:-}"
+REF_SYNC_REMOTE="${REF_SYNC_REMOTE:-}"
+REF_SYNC_USER="${REF_SYNC_USER:-}"
+REF_SYNC_MACHINE="${REF_SYNC_MACHINE:-}"
+REF_SYNC_DOCS="${REF_SYNC_DOCS:-}"
+REF_SYNC_GC_REVS_DAYS="${REF_SYNC_GC_REVS_DAYS:-}"
+REF_SYNC_GC_DOCS_MAX_CHAIN="${REF_SYNC_GC_DOCS_MAX_CHAIN:-}"
 
 # Computed values
-JJ_SYNC_PREFIX="sync"
+REF_SYNC_PREFIX="sync"
 
 # The revset for changes we want to sync
 # mine() - authored by current user
@@ -232,75 +232,75 @@ sanitize_for_ref() {
 
 # Load environment variables with defaults
 load_env() {
-    JJ_SYNC_REMOTE="${JJ_SYNC_REMOTE:-}"
-    JJ_SYNC_MACHINE="${JJ_SYNC_MACHINE:-$(hostname)}"
-    JJ_SYNC_DOCS="${JJ_SYNC_DOCS:-}"
-    JJ_SYNC_GC_REVS_DAYS="${JJ_SYNC_GC_REVS_DAYS:-7}"
-    JJ_SYNC_GC_DOCS_MAX_CHAIN="${JJ_SYNC_GC_DOCS_MAX_CHAIN:-50}"
+    REF_SYNC_REMOTE="${REF_SYNC_REMOTE:-}"
+    REF_SYNC_MACHINE="${REF_SYNC_MACHINE:-$(hostname)}"
+    REF_SYNC_DOCS="${REF_SYNC_DOCS:-}"
+    REF_SYNC_GC_REVS_DAYS="${REF_SYNC_GC_REVS_DAYS:-7}"
+    REF_SYNC_GC_DOCS_MAX_CHAIN="${REF_SYNC_GC_DOCS_MAX_CHAIN:-50}"
 
     # Sanitize machine name (remove characters that would be problematic in refs)
-    JJ_SYNC_MACHINE="${JJ_SYNC_MACHINE//[^a-zA-Z0-9_-]/_}"
+    REF_SYNC_MACHINE="${REF_SYNC_MACHINE//[^a-zA-Z0-9_-]/_}"
 
     # Resolve user identity (don't error if empty — require_user handles that)
-    if [[ -z "${JJ_SYNC_USER:-}" ]]; then
-        JJ_SYNC_USER=$(jj config get user.email 2>/dev/null) || true
+    if [[ -z "${REF_SYNC_USER:-}" ]]; then
+        REF_SYNC_USER=$(jj config get user.email 2>/dev/null) || true
     fi
-    if [[ -z "${JJ_SYNC_USER:-}" ]]; then
-        JJ_SYNC_USER=$(git config user.email 2>/dev/null) || true
+    if [[ -z "${REF_SYNC_USER:-}" ]]; then
+        REF_SYNC_USER=$(git config user.email 2>/dev/null) || true
     fi
 
     # Sanitize user for ref name
-    if [[ -n "$JJ_SYNC_USER" ]]; then
-        JJ_SYNC_USER=$(sanitize_for_ref "$JJ_SYNC_USER")
+    if [[ -n "$REF_SYNC_USER" ]]; then
+        REF_SYNC_USER=$(sanitize_for_ref "$REF_SYNC_USER")
     fi
 }
 
-# Require JJ_SYNC_USER to be set (called by commands that need it)
+# Require REF_SYNC_USER to be set (called by commands that need it)
 require_user() {
-    if [[ -z "${JJ_SYNC_USER:-}" ]]; then
+    if [[ -z "${REF_SYNC_USER:-}" ]]; then
         cat >&2 <<EOF
 Error: Could not determine user identity
 
 Set one of the following:
   jj config set --user user.email "you@example.com"
   git config --global user.email "you@example.com"
-  export JJ_SYNC_USER="you@example.com"
+  export REF_SYNC_USER="you@example.com"
 EOF
         exit 1
     fi
 }
 
-# Require JJ_SYNC_DOCS to be set (called when --docs or --both is used)
+# Require REF_SYNC_DOCS to be set (called when --docs or --both is used)
 require_docs_env() {
-    if [[ -z "${JJ_SYNC_DOCS:-}" ]]; then
+    if [[ -z "${REF_SYNC_DOCS:-}" ]]; then
         cat >&2 <<EOF
 Error: No doc directories specified
 
-Provide directories after --docs or set JJ_SYNC_DOCS:
-  jj-sync push --docs ai/docs .claude
-  export JJ_SYNC_DOCS="ai/docs .claude"
+Provide directories after the command or set REF_SYNC_DOCS:
+  ref-sync push ./ai-docs .claude
+  export REF_SYNC_DOCS="ai-docs .claude"
 EOF
         exit 1
     fi
 
     # Validate that it's not just whitespace
     local trimmed
-    trimmed="${JJ_SYNC_DOCS// /}"
+    trimmed="${REF_SYNC_DOCS// /}"
     if [[ -z "$trimmed" ]]; then
         cat >&2 <<EOF
-Error: JJ_SYNC_DOCS is empty
-Hint: export JJ_SYNC_DOCS="ai/docs .claude"
+Error: REF_SYNC_DOCS is empty
+Hint: export REF_SYNC_DOCS="ai/docs .claude"
 EOF
         exit 1
     fi
 }
 
-# Parse JJ_SYNC_DOCS into an array and echo each directory
+# Parse REF_SYNC_DOCS into an array and echo each directory
 # Usage: while IFS= read -r dir; do ... done < <(get_docs_dirs)
 get_docs_dirs() {
     local dir
     # shellcheck disable=SC2086
-    for dir in $JJ_SYNC_DOCS; do
+    for dir in $REF_SYNC_DOCS; do
         echo "$dir"
     done
 }
@@ -314,22 +314,22 @@ get_tracked_files_in_dirs() {
 
 # Get the bookmark prefix for this machine's revisions
 get_revs_prefix() {
-    echo "${JJ_SYNC_PREFIX}/${JJ_SYNC_USER}/${JJ_SYNC_MACHINE}/revs"
+    echo "${REF_SYNC_PREFIX}/${REF_SYNC_USER}/${REF_SYNC_MACHINE}/revs"
 }
 
 # Get the bookmark name for this machine's docs
 get_docs_bookmark() {
-    echo "${JJ_SYNC_PREFIX}/${JJ_SYNC_USER}/${JJ_SYNC_MACHINE}/docs"
+    echo "${REF_SYNC_PREFIX}/${REF_SYNC_USER}/${REF_SYNC_MACHINE}/docs"
 }
 
 # Get the glob pattern for all machines' revision bookmarks (current user)
 get_all_revs_glob() {
-    echo "${JJ_SYNC_PREFIX}/${JJ_SYNC_USER}/*/revs/*"
+    echo "${REF_SYNC_PREFIX}/${REF_SYNC_USER}/*/revs/*"
 }
 
 # Get the glob pattern for all machines' docs bookmarks (current user)
 get_all_docs_glob() {
-    echo "${JJ_SYNC_PREFIX}/${JJ_SYNC_USER}/*/docs"
+    echo "${REF_SYNC_PREFIX}/${REF_SYNC_USER}/*/docs"
 }
 
 # === Git Plumbing ===
@@ -398,19 +398,19 @@ list_git_remotes() {
 }
 
 # Resolve which remote to use for syncing
-# Sets JJ_SYNC_REMOTE as a side effect
+# Sets REF_SYNC_REMOTE as a side effect
 # Logic: explicit value > single remote auto-detect > error
 resolve_remote() {
     # If already set (via env or --remote flag), validate it exists
-    if [[ -n "$JJ_SYNC_REMOTE" ]]; then
-        if ! git_cmd remote get-url "$JJ_SYNC_REMOTE" >/dev/null 2>&1; then
+    if [[ -n "$REF_SYNC_REMOTE" ]]; then
+        if ! git_cmd remote get-url "$REF_SYNC_REMOTE" >/dev/null 2>&1; then
             cat >&2 <<EOF
-Error: Remote '$JJ_SYNC_REMOTE' not found
+Error: Remote '$REF_SYNC_REMOTE' not found
 
 Available remotes:
 $(list_git_remotes 2>/dev/null | sed 's/^/  /')
 
-Set a valid remote via --remote or JJ_SYNC_REMOTE.
+Set a valid remote via --remote or REF_SYNC_REMOTE.
 EOF
             exit 1
         fi
@@ -429,13 +429,13 @@ EOF
             cat >&2 <<EOF
 Error: No git remotes configured
 
-Add a remote for jj-sync to push to:
+Add a remote for ref-sync to push to:
   jj git remote add origin <your-remote-url>
 EOF
             exit 1
             ;;
         1)
-            JJ_SYNC_REMOTE="${remotes[0]}"
+            REF_SYNC_REMOTE="${remotes[0]}"
             ;;
         *)
             # Multiple remotes — try origin, then upstream
@@ -450,13 +450,13 @@ EOF
                 cat >&2 <<EOF
 Error: Both 'origin' and 'upstream' remotes found — specify which one to use
 
-Set one via --remote <name> or JJ_SYNC_REMOTE=<name>.
+Set one via --remote <name> or REF_SYNC_REMOTE=<name>.
 EOF
                 exit 1
             elif [[ "$has_origin" == "true" ]]; then
-                JJ_SYNC_REMOTE="origin"
+                REF_SYNC_REMOTE="origin"
             elif [[ "$has_upstream" == "true" ]]; then
-                JJ_SYNC_REMOTE="upstream"
+                REF_SYNC_REMOTE="upstream"
             else
                 cat >&2 <<EOF
 Error: Multiple git remotes found, none named 'origin' or 'upstream'
@@ -464,7 +464,7 @@ Error: Multiple git remotes found, none named 'origin' or 'upstream'
 Available remotes:
 $(printf '  %s\n' "${remotes[@]}")
 
-Set one via --remote <name> or JJ_SYNC_REMOTE=<name>.
+Set one via --remote <name> or REF_SYNC_REMOTE=<name>.
 EOF
                 exit 1
             fi
@@ -480,7 +480,7 @@ require_remote() {
 
 # Get the URL of the sync remote
 get_remote_url() {
-    git_cmd remote get-url "$JJ_SYNC_REMOTE"
+    git_cmd remote get-url "$REF_SYNC_REMOTE"
 }
 
 # Create a tree object from files in specified directories
@@ -548,21 +548,21 @@ get_commit_timestamp() {
 
 # List refs on remote matching a pattern
 # Usage: list_remote_refs <pattern>
-# Outputs: one ref per line (without refs/jj-sync/ prefix)
-# Note: We use refs/jj-sync/ namespace to avoid jj importing them as bookmarks
+# Outputs: one ref per line (without refs/ref-sync/ prefix)
+# Note: We use refs/ref-sync/ namespace to avoid jj importing them as bookmarks
 list_remote_refs() {
     local pattern="$1"
-    git_cmd ls-remote "$JJ_SYNC_REMOTE" "refs/jj-sync/$pattern" 2>/dev/null |
-        sed 's|.*refs/jj-sync/||'
+    git_cmd ls-remote "$REF_SYNC_REMOTE" "refs/ref-sync/$pattern" 2>/dev/null |
+        sed 's|.*refs/ref-sync/||'
 }
 
 # List refs on remote with their commit SHAs
 # Usage: list_remote_refs_with_shas <pattern>
-# Outputs: "sha ref" per line (ref without refs/jj-sync/ prefix)
+# Outputs: "sha ref" per line (ref without refs/ref-sync/ prefix)
 list_remote_refs_with_shas() {
     local pattern="$1"
-    git_cmd ls-remote "$JJ_SYNC_REMOTE" "refs/jj-sync/$pattern" 2>/dev/null |
-        sed 's|refs/jj-sync/||'
+    git_cmd ls-remote "$REF_SYNC_REMOTE" "refs/ref-sync/$pattern" 2>/dev/null |
+        sed 's|refs/ref-sync/||'
 }
 
 # Fetch refs from remote
@@ -570,9 +570,9 @@ list_remote_refs_with_shas() {
 # shellcheck disable=SC2120
 fetch_remote() {
     if [[ $# -eq 0 ]]; then
-        git_cmd fetch "$JJ_SYNC_REMOTE"
+        git_cmd fetch "$REF_SYNC_REMOTE"
     else
-        git_cmd fetch "$JJ_SYNC_REMOTE" "$@"
+        git_cmd fetch "$REF_SYNC_REMOTE" "$@"
     fi
 }
 
@@ -586,14 +586,14 @@ push_remote() {
     fi
 
     # shellcheck disable=SC2086
-    git_cmd push $force "$JJ_SYNC_REMOTE" "$@"
+    git_cmd push $force "$REF_SYNC_REMOTE" "$@"
 }
 
 # Delete a ref on the remote
 # Usage: delete_remote_ref <refname>
 delete_remote_ref() {
     local ref="$1"
-    git_cmd push "$JJ_SYNC_REMOTE" ":refs/jj-sync/$ref" 2>/dev/null || true
+    git_cmd push "$REF_SYNC_REMOTE" ":refs/ref-sync/$ref" 2>/dev/null || true
 }
 
 # Get a commit from a remote ref (fetches if needed)
@@ -604,11 +604,11 @@ get_remote_commit() {
 
     # First try to get directly from remote
     local commit
-    commit=$(git_cmd ls-remote "$JJ_SYNC_REMOTE" "refs/jj-sync/$ref" 2>/dev/null | cut -f1)
+    commit=$(git_cmd ls-remote "$REF_SYNC_REMOTE" "refs/ref-sync/$ref" 2>/dev/null | cut -f1)
 
     if [[ -n "$commit" ]]; then
         # Fetch the commit object
-        git_cmd fetch "$JJ_SYNC_REMOTE" "$commit" 2>/dev/null || log_warn "Failed to fetch commit object $commit"
+        git_cmd fetch "$REF_SYNC_REMOTE" "$commit" 2>/dev/null || log_warn "Failed to fetch commit object $commit"
         echo "$commit"
         return 0
     fi
@@ -714,7 +714,7 @@ push_revisions() {
     local skipped_count=0
     if [[ ${#bookmarks_to_push[@]} -gt 0 ]]; then
         # Get commit SHAs for each change and push directly via git
-        # Push to refs/jj-sync/ namespace to avoid jj importing them as bookmarks
+        # Push to refs/ref-sync/ namespace to avoid jj importing them as bookmarks
         # (which would make commits immutable)
         for bookmark in "${bookmarks_to_push[@]}"; do
             # Extract change_id from bookmark name
@@ -734,7 +734,7 @@ push_revisions() {
 
             verbose "Pushing: $bookmark ($commit_sha)"
             if ! is_dry_run; then
-                git_cmd push "$JJ_SYNC_REMOTE" "+$commit_sha:refs/jj-sync/$bookmark" 2>/dev/null || {
+                git_cmd push "$REF_SYNC_REMOTE" "+$commit_sha:refs/ref-sync/$bookmark" 2>/dev/null || {
                     log_warn "Failed to push bookmark: $bookmark"
                     continue
                 }
@@ -780,16 +780,16 @@ pull_revisions() {
     fi
 
     # Fetch each ref and create temporary local bookmark refs so jj can see them
-    verbose "Fetching commits from $JJ_SYNC_REMOTE"
+    verbose "Fetching commits from $REF_SYNC_REMOTE"
     local temp_bookmarks=()
     for ref in "${remote_refs[@]}"; do
         local commit
-        commit=$(git_cmd ls-remote "$JJ_SYNC_REMOTE" "refs/jj-sync/$ref" 2>/dev/null | cut -f1)
+        commit=$(git_cmd ls-remote "$REF_SYNC_REMOTE" "refs/ref-sync/$ref" 2>/dev/null | cut -f1)
         if [[ -n "$commit" ]]; then
             verbose "Fetching: $ref ($commit)"
             # Create a temporary local branch so jj git import can see the commit
-            local temp_bookmark="jj-sync-import/${ref//\//-}"
-            git_cmd fetch "$JJ_SYNC_REMOTE" "$commit:refs/heads/$temp_bookmark" 2>/dev/null || {
+            local temp_bookmark="ref-sync-import/${ref//\//-}"
+            git_cmd fetch "$REF_SYNC_REMOTE" "$commit:refs/heads/$temp_bookmark" 2>/dev/null || {
                 log_warn "Failed to fetch commit $commit for $ref"
                 continue
             }
@@ -982,7 +982,7 @@ push_docs() {
     # Create the docs commit
     local timestamp
     timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-    local message="jj-sync docs $timestamp"
+    local message="ref-sync docs $timestamp"
 
     local commit
     if [[ -n "$parent_commit" ]]; then
@@ -996,9 +996,9 @@ push_docs() {
     fi
     verbose "Created commit: $commit"
 
-    # Push to remote using refs/jj-sync/ namespace (force push since we may replace the parent chain)
+    # Push to remote using refs/ref-sync/ namespace (force push since we may replace the parent chain)
     verbose "Pushing docs to remote"
-    if ! git_cmd push --force "$JJ_SYNC_REMOTE" "$commit:refs/jj-sync/$docs_bookmark" 2>/dev/null; then
+    if ! git_cmd push --force "$REF_SYNC_REMOTE" "$commit:refs/ref-sync/$docs_bookmark" 2>/dev/null; then
         die "Failed to push docs"
     fi
 
@@ -1010,7 +1010,7 @@ pull_docs() {
     log_info "Pulling docs..."
 
     # Fetch from remote first
-    verbose "Fetching from $JJ_SYNC_REMOTE"
+    verbose "Fetching from $REF_SYNC_REMOTE"
     if ! is_dry_run; then
         fetch_remote 2>/dev/null || log_warn "Failed to fetch from remote (may show stale state)"
     fi
@@ -1098,7 +1098,7 @@ pull_docs() {
             # Create merge commit with both parents
             local timestamp
             timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-            local message="jj-sync docs merge $timestamp"
+            local message="ref-sync docs merge $timestamp"
             final_commit=$(create_commit "$merged_tree" "$message" "$final_commit" "$other_commit")
         done
     fi
@@ -1173,7 +1173,7 @@ pull_docs() {
     local our_docs_bookmark
     our_docs_bookmark=$(get_docs_bookmark)
     verbose "Pushing docs state as $our_docs_bookmark"
-    git_cmd push --force "$JJ_SYNC_REMOTE" "$final_commit:refs/jj-sync/$our_docs_bookmark" 2>/dev/null || \
+    git_cmd push --force "$REF_SYNC_REMOTE" "$final_commit:refs/ref-sync/$our_docs_bookmark" 2>/dev/null || \
         log_warn "Failed to push docs bookmark (future merges may lack shared history)"
 
     # Show what was extracted
@@ -1239,7 +1239,7 @@ gc_revisions() {
         return 0
     fi
 
-    local threshold_days="${JJ_SYNC_GC_REVS_DAYS:-7}"
+    local threshold_days="${REF_SYNC_GC_REVS_DAYS:-7}"
     local threshold_secs=$((threshold_days * 24 * 60 * 60))
     local now
     now=$(date +%s)
@@ -1295,7 +1295,7 @@ gc_docs() {
         return 0
     fi
 
-    local max_chain="${JJ_SYNC_GC_DOCS_MAX_CHAIN:-50}"
+    local max_chain="${REF_SYNC_GC_DOCS_MAX_CHAIN:-50}"
 
     for ref in "${docs_refs[@]}"; do
         local commit
@@ -1320,10 +1320,10 @@ gc_docs() {
             tree=$(git_cmd rev-parse "$commit^{tree}" 2>/dev/null)
 
             local new_commit
-            new_commit=$(create_commit "$tree" "jj-sync docs (squashed)")
+            new_commit=$(create_commit "$tree" "ref-sync docs (squashed)")
 
-            # Force push the new commit to refs/jj-sync/ namespace
-            git_cmd push --force "$JJ_SYNC_REMOTE" "$new_commit:refs/jj-sync/$ref" 2>/dev/null
+            # Force push the new commit to refs/ref-sync/ namespace
+            git_cmd push --force "$REF_SYNC_REMOTE" "$new_commit:refs/ref-sync/$ref" 2>/dev/null
 
             log_success "$ref: squashed from $chain_length commits to 1"
         fi
@@ -1332,21 +1332,21 @@ gc_docs() {
 
 # Remove sync state for the current user
 clean_all() {
-    log_info "Removing sync state for user '$JJ_SYNC_USER'..."
+    log_info "Removing sync state for user '$REF_SYNC_USER'..."
 
     # List sync bookmarks scoped to the current user
     local all_refs=()
     local ref
     while IFS= read -r ref; do
         [[ -n "$ref" ]] && all_refs+=("$ref")
-    done < <(list_remote_refs "${JJ_SYNC_PREFIX}/${JJ_SYNC_USER}/*")
+    done < <(list_remote_refs "${REF_SYNC_PREFIX}/${REF_SYNC_USER}/*")
 
     if [[ ${#all_refs[@]} -eq 0 ]]; then
         log_info "No sync state found on remote"
         return 0
     fi
 
-    log_warn "Found ${#all_refs[@]} sync bookmark(s) on remote for user '$JJ_SYNC_USER'"
+    log_warn "Found ${#all_refs[@]} sync bookmark(s) on remote for user '$REF_SYNC_USER'"
 
     if is_dry_run; then
         log_info "[dry-run] Would delete:"
@@ -1367,7 +1367,7 @@ clean_all() {
     # Also clean up local refs
     while IFS= read -r ref; do
         [[ -n "$ref" ]] && delete_local_ref "$ref"
-    done < <(git_cmd branch --list "${JJ_SYNC_PREFIX}/${JJ_SYNC_USER}/*" 2>/dev/null | sed 's/^[* ]*//')
+    done < <(git_cmd branch --list "${REF_SYNC_PREFIX}/${REF_SYNC_USER}/*" 2>/dev/null | sed 's/^[* ]*//')
 
     if is_jj_repo; then
         jj git import --quiet 2>/dev/null || log_warn "Failed to import into jj after cleanup"
@@ -1378,12 +1378,12 @@ clean_all() {
 
 # Show sync status
 show_status() {
-    section "jj-sync status"
+    section "ref-sync status"
 
     # Attempt remote resolution non-fatally
     local remote_resolved=true
-    if [[ -n "$JJ_SYNC_REMOTE" ]]; then
-        if ! git_cmd remote get-url "$JJ_SYNC_REMOTE" >/dev/null 2>&1; then
+    if [[ -n "$REF_SYNC_REMOTE" ]]; then
+        if ! git_cmd remote get-url "$REF_SYNC_REMOTE" >/dev/null 2>&1; then
             remote_resolved=false
         fi
     else
@@ -1395,7 +1395,7 @@ show_status() {
         done < <(list_git_remotes 2>/dev/null)
 
         if [[ ${#remotes[@]} -eq 1 ]]; then
-            JJ_SYNC_REMOTE="${remotes[0]}"
+            REF_SYNC_REMOTE="${remotes[0]}"
         elif [[ ${#remotes[@]} -gt 1 ]]; then
             local has_origin=false has_upstream=false
             local r
@@ -1405,9 +1405,9 @@ show_status() {
             done
 
             if [[ "$has_origin" == "true" ]] && [[ "$has_upstream" != "true" ]]; then
-                JJ_SYNC_REMOTE="origin"
+                REF_SYNC_REMOTE="origin"
             elif [[ "$has_upstream" == "true" ]] && [[ "$has_origin" != "true" ]]; then
-                JJ_SYNC_REMOTE="upstream"
+                REF_SYNC_REMOTE="upstream"
             else
                 remote_resolved=false
             fi
@@ -1420,12 +1420,12 @@ show_status() {
     if [[ "$remote_resolved" == "true" ]]; then
         local remote_url
         remote_url=$(get_remote_url 2>/dev/null) || remote_url="(unknown)"
-        kv "Remote" "$JJ_SYNC_REMOTE → $remote_url"
+        kv "Remote" "$REF_SYNC_REMOTE → $remote_url"
     else
         kv "Remote" "(not configured)"
     fi
-    kv "User" "${JJ_SYNC_USER:-(not set)}"
-    kv "Machine" "$JJ_SYNC_MACHINE"
+    kv "User" "${REF_SYNC_USER:-(not set)}"
+    kv "Machine" "$REF_SYNC_MACHINE"
 
     # Local revisions (requires jj)
     if is_jj_repo; then
@@ -1446,12 +1446,12 @@ show_status() {
     # Remote sections require a resolved remote
     if [[ "$remote_resolved" != "true" ]]; then
         section "Docs"
-        if [[ -n "${JJ_SYNC_DOCS:-}" ]]; then
-            kv "JJ_SYNC_DOCS" "$JJ_SYNC_DOCS"
+        if [[ -n "${REF_SYNC_DOCS:-}" ]]; then
+            kv "REF_SYNC_DOCS" "$REF_SYNC_DOCS"
             echo ""
             list_doc_dirs
         else
-            log_info "Not configured (set JJ_SYNC_DOCS to enable)"
+            log_info "Not configured (set REF_SYNC_DOCS to enable)"
         fi
         return 0
     fi
@@ -1487,12 +1487,12 @@ show_status() {
 
     # Docs section
     section "Docs"
-    if [[ -n "${JJ_SYNC_DOCS:-}" ]]; then
-        kv "JJ_SYNC_DOCS" "$JJ_SYNC_DOCS"
+    if [[ -n "${REF_SYNC_DOCS:-}" ]]; then
+        kv "REF_SYNC_DOCS" "$REF_SYNC_DOCS"
         echo ""
         list_doc_dirs
     else
-        log_info "Not configured (set JJ_SYNC_DOCS to enable)"
+        log_info "Not configured (set REF_SYNC_DOCS to enable)"
     fi
 
     # Remote docs state
@@ -1516,7 +1516,7 @@ show_status() {
 
 usage() {
     cat <<EOF
-Usage: jj-sync <command> [options]
+Usage: ref-sync <command> [dir...] [options]
 
 Sync WIP jj revisions and gitignored docs across machines.
 (Doc sync works in any git repo; revision sync requires jj.)
@@ -1531,32 +1531,34 @@ Commands:
   help         Show this help
 
 Flags:
-  --docs [dir...]  Sync docs only (dirs override JJ_SYNC_DOCS)
-  --both [dir...]  Sync revisions + docs (dirs override JJ_SYNC_DOCS)
-                   Default (no flag): sync revisions only
+  --revs           Sync revisions only (requires jj)
+  --docs [dir...]  Sync docs only (dirs override REF_SYNC_DOCS)
+  --both [dir...]  Sync revisions + docs (dirs override REF_SYNC_DOCS)
+                   Default: auto-detect from repo type and REF_SYNC_DOCS
 
 Options:
-  --remote <name>   Override sync remote (default: auto-detected or \$JJ_SYNC_REMOTE)
-  --user <name>     Override user identity (default: jj/git user.email or \$JJ_SYNC_USER)
-  --machine <name>  Override machine name (default: \$JJ_SYNC_MACHINE or hostname)
+  --remote <name>   Override sync remote (default: auto-detected or \$REF_SYNC_REMOTE)
+  --user <name>     Override user identity (default: jj/git user.email or \$REF_SYNC_USER)
+  --machine <name>  Override machine name (default: \$REF_SYNC_MACHINE or hostname)
   --dry-run         Show what would happen without doing it
   --verbose         Show git/jj commands as they run
   --force           Skip confirmation prompts
 
 Environment Variables:
-  JJ_SYNC_DOCS              Space-separated directories to sync (required for --docs/--both)
-  JJ_SYNC_REMOTE            Git remote name (auto-detected from origin/upstream)
-  JJ_SYNC_USER              User identity for ref namespacing (default: jj/git user.email)
-  JJ_SYNC_MACHINE           Machine identifier (default: hostname)
-  JJ_SYNC_GC_REVS_DAYS      GC threshold for rev bookmarks (default: 7)
-  JJ_SYNC_GC_DOCS_MAX_CHAIN GC threshold for doc chain length (default: 50)
+  REF_SYNC_DOCS              Space-separated directories to sync (required for --docs/--both)
+  REF_SYNC_REMOTE            Git remote name (auto-detected from origin/upstream)
+  REF_SYNC_USER              User identity for ref namespacing (default: jj/git user.email)
+  REF_SYNC_MACHINE           Machine identifier (default: hostname)
+  REF_SYNC_GC_REVS_DAYS      GC threshold for rev bookmarks (default: 7)
+  REF_SYNC_GC_DOCS_MAX_CHAIN GC threshold for doc chain length (default: 50)
 
 Examples:
-  jj-sync push                        # Push WIP revisions
-  jj-sync push --docs ai/docs .claude # Push specific doc directories
-  jj-sync push --both                 # Push revisions and docs
-  jj-sync pull --docs                 # Pull only docs
-  jj-sync status                      # Show sync status
+  ref-sync push ./ai-docs .claude      # Push these directories (+ revs in jj)
+  ref-sync pull                        # Pull whatever was pushed
+  ref-sync push                        # Auto-detect from repo type and REF_SYNC_DOCS
+  ref-sync push --revs                 # Force revision-only sync
+  ref-sync push --docs                 # Force docs-only (uses REF_SYNC_DOCS)
+  ref-sync status                      # Show sync status
 EOF
 }
 
@@ -1565,13 +1567,13 @@ cmd_completions() {
     case "$shell" in
         bash)
             cat <<'BASH_COMPLETIONS'
-_jj_sync() {
+_ref_sync() {
     local cur prev words cword
     _init_completion || return
 
     local commands="push pull status gc clean completions help"
     local global_opts="--help --dry-run --verbose --remote --user --machine --force"
-    local push_pull_opts="--docs --both"
+    local push_pull_opts="--revs --docs --both"
 
     # Handle command completion
     if [[ $cword -eq 1 ]]; then
@@ -1616,14 +1618,14 @@ _jj_sync() {
     fi
 }
 
-complete -F _jj_sync jj-sync
+complete -F _ref_sync ref-sync
 BASH_COMPLETIONS
             ;;
         zsh)
             cat <<'ZSH_COMPLETIONS'
-#compdef jj-sync
+#compdef ref-sync
 
-_jj_sync() {
+_ref_sync() {
     local -a commands
     local -a global_opts
 
@@ -1641,15 +1643,16 @@ _jj_sync() {
         '--help[Show help message]'
         '--dry-run[Show what would be done without doing it]'
         '--verbose[Show verbose output]'
-        '--remote=[Specify sync remote (auto-detected if one remote)]:remote:_jj_sync_remotes'
+        '--remote=[Specify sync remote (auto-detected if one remote)]:remote:_ref_sync_remotes'
         '--user=[Specify user identity for ref namespacing]:user:'
         '--machine=[Specify machine name]:machine:'
     )
 
     local -a push_pull_opts
     push_pull_opts=(
-        '--docs[Sync docs only (dirs override JJ_SYNC_DOCS)]'
-        '--both[Sync revisions + docs (dirs override JJ_SYNC_DOCS)]'
+        '--revs[Sync revisions only (requires jj)]'
+        '--docs[Sync docs only (dirs override REF_SYNC_DOCS)]'
+        '--both[Sync revisions + docs (dirs override REF_SYNC_DOCS)]'
     )
 
     _arguments -C \
@@ -1658,7 +1661,7 @@ _jj_sync() {
 
     case "$state" in
         command)
-            _describe -t commands 'jj-sync command' commands
+            _describe -t commands 'ref-sync command' commands
             _describe -t options 'options' global_opts
             ;;
         args)
@@ -1685,7 +1688,7 @@ _jj_sync() {
     esac
 }
 
-_jj_sync_remotes() {
+_ref_sync_remotes() {
     local -a remotes
     if [[ -d .git ]] || [[ -d .jj ]]; then
         remotes=(${(f)"$(git remote 2>/dev/null)"})
@@ -1693,40 +1696,41 @@ _jj_sync_remotes() {
     fi
 }
 
-_jj_sync "$@"
+_ref_sync "$@"
 ZSH_COMPLETIONS
             ;;
         fish)
             cat <<'FISH_COMPLETIONS'
 # Disable file completion by default
-complete -c jj-sync -f
+complete -c ref-sync -f
 
 # Commands
-complete -c jj-sync -n __fish_use_subcommand -a push -d 'Push WIP revisions and/or docs'
-complete -c jj-sync -n __fish_use_subcommand -a pull -d 'Pull WIP revisions and/or docs'
-complete -c jj-sync -n __fish_use_subcommand -a status -d 'Show sync status'
-complete -c jj-sync -n __fish_use_subcommand -a gc -d 'Garbage collect old bookmarks'
-complete -c jj-sync -n __fish_use_subcommand -a clean -d 'Remove all sync state'
-complete -c jj-sync -n __fish_use_subcommand -a completions -d 'Print shell completions'
-complete -c jj-sync -n __fish_use_subcommand -a help -d 'Show help'
+complete -c ref-sync -n __fish_use_subcommand -a push -d 'Push WIP revisions and/or docs'
+complete -c ref-sync -n __fish_use_subcommand -a pull -d 'Pull WIP revisions and/or docs'
+complete -c ref-sync -n __fish_use_subcommand -a status -d 'Show sync status'
+complete -c ref-sync -n __fish_use_subcommand -a gc -d 'Garbage collect old bookmarks'
+complete -c ref-sync -n __fish_use_subcommand -a clean -d 'Remove all sync state'
+complete -c ref-sync -n __fish_use_subcommand -a completions -d 'Print shell completions'
+complete -c ref-sync -n __fish_use_subcommand -a help -d 'Show help'
 
 # Global options
-complete -c jj-sync -l help -d 'Show help message'
-complete -c jj-sync -l dry-run -d 'Show what would be done'
-complete -c jj-sync -l verbose -d 'Show verbose output'
-complete -c jj-sync -l remote -d 'Specify sync remote' -xa '(__fish_git_remotes)'
-complete -c jj-sync -l user -d 'Specify user identity for ref namespacing'
-complete -c jj-sync -l machine -d 'Specify machine name'
+complete -c ref-sync -l help -d 'Show help message'
+complete -c ref-sync -l dry-run -d 'Show what would be done'
+complete -c ref-sync -l verbose -d 'Show verbose output'
+complete -c ref-sync -l remote -d 'Specify sync remote' -xa '(__fish_git_remotes)'
+complete -c ref-sync -l user -d 'Specify user identity for ref namespacing'
+complete -c ref-sync -l machine -d 'Specify machine name'
 
 # Push/pull specific options
-complete -c jj-sync -n '__fish_seen_subcommand_from push pull' -l docs -d 'Sync docs only'
-complete -c jj-sync -n '__fish_seen_subcommand_from push pull' -l both -d 'Sync revisions + docs'
+complete -c ref-sync -n '__fish_seen_subcommand_from push pull' -l revs -d 'Sync revisions only (requires jj)'
+complete -c ref-sync -n '__fish_seen_subcommand_from push pull' -l docs -d 'Sync docs only'
+complete -c ref-sync -n '__fish_seen_subcommand_from push pull' -l both -d 'Sync revisions + docs'
 
 # GC/clean specific options
-complete -c jj-sync -n '__fish_seen_subcommand_from gc clean' -l force -d 'Skip confirmation'
+complete -c ref-sync -n '__fish_seen_subcommand_from gc clean' -l force -d 'Skip confirmation'
 
 # Completions subcommand
-complete -c jj-sync -n '__fish_seen_subcommand_from completions' -a 'bash zsh fish' -d 'Shell type'
+complete -c ref-sync -n '__fish_seen_subcommand_from completions' -a 'bash zsh fish' -d 'Shell type'
 
 # Helper function for git remotes
 function __fish_git_remotes
@@ -1737,7 +1741,7 @@ end
 FISH_COMPLETIONS
             ;;
         *)
-            echo "Usage: jj-sync completions <bash|zsh|fish>" >&2
+            echo "Usage: ref-sync completions <bash|zsh|fish>" >&2
             exit 1
             ;;
     esac
@@ -1746,6 +1750,7 @@ FISH_COMPLETIONS
 main() {
     local cmd=""
     local completions_shell=""
+    local POSITIONAL_DIRS=()
 
     # Parse arguments (must be done in main, not subshell, to preserve globals)
     while [[ $# -gt 0 ]]; do
@@ -1762,6 +1767,10 @@ main() {
                     shift
                 fi
                 ;;
+            --revs)
+                SYNC_MODE="revs"
+                shift
+                ;;
             --docs)
                 SYNC_MODE="docs"
                 shift
@@ -1774,7 +1783,7 @@ main() {
                         *) inline_dirs+=("$1"); shift ;;
                     esac
                 done
-                [[ ${#inline_dirs[@]} -gt 0 ]] && JJ_SYNC_DOCS="${inline_dirs[*]}"
+                [[ ${#inline_dirs[@]} -gt 0 ]] && REF_SYNC_DOCS="${inline_dirs[*]}"
                 ;;
             --both)
                 SYNC_MODE="both"
@@ -1788,7 +1797,7 @@ main() {
                         *) inline_dirs+=("$1"); shift ;;
                     esac
                 done
-                [[ ${#inline_dirs[@]} -gt 0 ]] && JJ_SYNC_DOCS="${inline_dirs[*]}"
+                [[ ${#inline_dirs[@]} -gt 0 ]] && REF_SYNC_DOCS="${inline_dirs[*]}"
                 ;;
             --remote)
                 [[ $# -lt 2 ]] && die "--remote requires a value"
@@ -1822,10 +1831,23 @@ main() {
                 exit 0
                 ;;
             *)
-                die "Unknown option: $1"
+                if [[ -n "$cmd" ]]; then
+                    POSITIONAL_DIRS+=("$1")
+                    shift
+                else
+                    die "Unknown option: $1"
+                fi
                 ;;
         esac
     done
+
+    # Apply positional dirs as doc directories
+    if [[ ${#POSITIONAL_DIRS[@]} -gt 0 ]]; then
+        if [[ "$cmd" != "push" && "$cmd" != "pull" ]]; then
+            die "Unexpected arguments: ${POSITIONAL_DIRS[*]}"
+        fi
+        REF_SYNC_DOCS="${POSITIONAL_DIRS[*]}"
+    fi
 
     # Handle help early
     if [[ "$cmd" == "help" ]] || [[ -z "$cmd" ]]; then
@@ -1843,14 +1865,9 @@ main() {
     load_env
 
     # Apply overrides
-    [[ -n "$OPT_REMOTE" ]] && JJ_SYNC_REMOTE="$OPT_REMOTE"
-    [[ -n "$OPT_USER" ]] && JJ_SYNC_USER=$(sanitize_for_ref "$OPT_USER")
-    [[ -n "$OPT_MACHINE" ]] && JJ_SYNC_MACHINE="$OPT_MACHINE"
-
-    # Validate docs env if needed
-    if [[ "$SYNC_MODE" == "docs" ]] || [[ "$SYNC_MODE" == "both" ]]; then
-        require_docs_env
-    fi
+    [[ -n "$OPT_REMOTE" ]] && REF_SYNC_REMOTE="$OPT_REMOTE"
+    [[ -n "$OPT_USER" ]] && REF_SYNC_USER=$(sanitize_for_ref "$OPT_USER")
+    [[ -n "$OPT_MACHINE" ]] && REF_SYNC_MACHINE="$OPT_MACHINE"
 
     # Dispatch to command
     case "$cmd" in
@@ -1875,12 +1892,35 @@ main() {
     esac
 }
 
-cmd_push() {
-    if [[ "$SYNC_MODE" == "docs" ]]; then
-        require_git_repo
-    else
-        require_jj_repo
+resolve_sync_mode() {
+    if [[ -n "$SYNC_MODE" ]]; then
+        return
     fi
+
+    if is_jj_repo && [[ -n "${REF_SYNC_DOCS:-}" ]]; then
+        SYNC_MODE="both"
+    elif is_jj_repo; then
+        SYNC_MODE="revs"
+    elif [[ -n "${REF_SYNC_DOCS:-}" ]]; then
+        SYNC_MODE="docs"
+    else
+        die "Nothing to sync. Set REF_SYNC_DOCS for doc sync, or use a jj repo for revision sync."
+    fi
+}
+
+cmd_push() {
+    resolve_sync_mode
+
+    if [[ "$SYNC_MODE" == "revs" ]] || [[ "$SYNC_MODE" == "both" ]]; then
+        if ! is_jj_repo; then
+            die "Revision sync requires a jj repository"
+        fi
+    fi
+    if [[ "$SYNC_MODE" == "docs" ]] || [[ "$SYNC_MODE" == "both" ]]; then
+        require_docs_env
+    fi
+
+    require_git_repo
     require_remote
     require_user
 
@@ -1899,11 +1939,23 @@ cmd_push() {
 }
 
 cmd_pull() {
-    if [[ "$SYNC_MODE" == "docs" ]]; then
-        require_git_repo
-    else
-        require_jj_repo
+    # For pull, auto-detect without requiring REF_SYNC_DOCS.
+    # Docs pull is a no-op if nothing exists on the remote.
+    if [[ -z "$SYNC_MODE" ]]; then
+        if is_jj_repo; then
+            SYNC_MODE="both"
+        else
+            SYNC_MODE="docs"
+        fi
     fi
+
+    if [[ "$SYNC_MODE" == "revs" ]] || [[ "$SYNC_MODE" == "both" ]]; then
+        if ! is_jj_repo; then
+            die "Revision sync requires a jj repository"
+        fi
+    fi
+
+    require_git_repo
     require_remote
     require_user
 
@@ -1935,7 +1987,7 @@ cmd_gc() {
         gc_revisions
     fi
 
-    if [[ -n "${JJ_SYNC_DOCS:-}" ]]; then
+    if [[ -n "${REF_SYNC_DOCS:-}" ]]; then
         gc_docs
     fi
 }
@@ -1946,7 +1998,7 @@ cmd_clean() {
     require_user
 
     if [[ "$FORCE" != "true" ]]; then
-        if ! confirm "This will delete all sync state for user '$JJ_SYNC_USER' locally and on remote. Continue?"; then
+        if ! confirm "This will delete all sync state for user '$REF_SYNC_USER' locally and on remote. Continue?"; then
             log_info "Aborted."
             exit 0
         fi

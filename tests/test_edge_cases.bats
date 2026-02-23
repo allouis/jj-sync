@@ -30,7 +30,7 @@ teardown() {
     jj describe -m "Test in non-colocated repo" >/dev/null 2>&1
 
     # Push
-    JJ_SYNC_USER="$TEST_USER" JJ_SYNC_MACHINE="noncoloc" JJ_SYNC_REMOTE="sync" "$JJ_SYNC" push
+    REF_SYNC_USER="$TEST_USER" REF_SYNC_MACHINE="noncoloc" REF_SYNC_REMOTE="sync" "$REF_SYNC" push
 
     # Verify bookmark exists on remote
     local count
@@ -42,7 +42,7 @@ teardown() {
     cd_to_machine "$MACHINE_LAPTOP"
 
     # Try to push with a non-existent remote
-    run env JJ_SYNC_USER="$TEST_USER" JJ_SYNC_MACHINE="$MACHINE_LAPTOP" JJ_SYNC_REMOTE="nonexistent" "$JJ_SYNC" push
+    run env REF_SYNC_USER="$TEST_USER" REF_SYNC_MACHINE="$MACHINE_LAPTOP" REF_SYNC_REMOTE="nonexistent" "$REF_SYNC" push
 
     # Should fail with clear error
     [[ "$status" -ne 0 ]]
@@ -55,17 +55,17 @@ teardown() {
     mkdir -p notarepo
     cd notarepo
 
-    run env JJ_SYNC_USER="$TEST_USER" JJ_SYNC_MACHINE="laptop" JJ_SYNC_REMOTE="sync" "$JJ_SYNC" push
+    run env -u REF_SYNC_DOCS REF_SYNC_USER="$TEST_USER" REF_SYNC_MACHINE="laptop" REF_SYNC_REMOTE="sync" "$REF_SYNC" push
 
     # Should fail with clear error
     [[ "$status" -ne 0 ]]
-    [[ "$output" =~ "Not in a git repository" ]]
+    [[ "$output" =~ "Nothing to sync" ]]
 }
 
 @test "E4: Unknown command errors gracefully" {
     cd_to_machine "$MACHINE_LAPTOP"
 
-    run env JJ_SYNC_USER="$TEST_USER" JJ_SYNC_MACHINE="$MACHINE_LAPTOP" JJ_SYNC_REMOTE="sync" "$JJ_SYNC" unknown_command
+    run env REF_SYNC_USER="$TEST_USER" REF_SYNC_MACHINE="$MACHINE_LAPTOP" REF_SYNC_REMOTE="sync" "$REF_SYNC" unknown_command
 
     [[ "$status" -ne 0 ]]
     [[ "$output" =~ "Unknown" ]]
@@ -74,7 +74,7 @@ teardown() {
 @test "E5: Help command works" {
     cd_to_machine "$MACHINE_LAPTOP"
 
-    run "$JJ_SYNC" help
+    run "$REF_SYNC" help
 
     [[ "$status" -eq 0 ]]
     [[ "$output" =~ "Usage" ]]
@@ -85,7 +85,7 @@ teardown() {
 @test "E6: --help flag works" {
     cd_to_machine "$MACHINE_LAPTOP"
 
-    run "$JJ_SYNC" --help
+    run "$REF_SYNC" --help
 
     [[ "$status" -eq 0 ]]
     [[ "$output" =~ "Usage" ]]
@@ -98,7 +98,7 @@ teardown() {
     make_change "test.txt" "content" "Test change"
 
     # Push with machine name containing special chars
-    JJ_SYNC_USER="$TEST_USER" JJ_SYNC_MACHINE="my@machine:with/special" JJ_SYNC_REMOTE="sync" "$JJ_SYNC" push
+    REF_SYNC_USER="$TEST_USER" REF_SYNC_MACHINE="my@machine:with/special" REF_SYNC_REMOTE="sync" "$REF_SYNC" push
 
     # Verify bookmark uses sanitized name
     local count
@@ -110,7 +110,7 @@ teardown() {
     cd_to_machine "$MACHINE_LAPTOP"
 
     # Don't create any changes - just have root commit
-    run run_jj_sync "$MACHINE_LAPTOP" push
+    run run_ref_sync "$MACHINE_LAPTOP" push
 
     [[ "$status" -eq 0 ]]
     [[ "$output" =~ "No WIP revisions to push" ]]
@@ -120,7 +120,7 @@ teardown() {
     cd_to_machine "$MACHINE_DEV1"
 
     # Pull with nothing on remote
-    run run_jj_sync "$MACHINE_DEV1" pull
+    run run_ref_sync "$MACHINE_DEV1" pull
 
     [[ "$status" -eq 0 ]]
     [[ "$output" =~ "No revisions found on remote" ]]
@@ -129,16 +129,16 @@ teardown() {
 @test "E10: Status works with no sync state" {
     cd_to_machine "$MACHINE_LAPTOP"
 
-    run run_jj_sync "$MACHINE_LAPTOP" status
+    run run_ref_sync "$MACHINE_LAPTOP" status
 
     [[ "$status" -eq 0 ]]
-    [[ "$output" =~ "jj-sync status" ]]
+    [[ "$output" =~ "ref-sync status" ]]
 }
 
 @test "E11: Clean with no sync state succeeds" {
     cd_to_machine "$MACHINE_LAPTOP"
 
-    run run_jj_sync "$MACHINE_LAPTOP" clean --force
+    run run_ref_sync "$MACHINE_LAPTOP" clean --force
 
     [[ "$status" -eq 0 ]]
     [[ "$output" =~ "No sync state found" ]]
@@ -152,10 +152,10 @@ teardown() {
     echo "deep content" > "docs/level1/level2/level3/level4/deep.md"
 
     # Push docs
-    run_jj_sync_with_docs "$MACHINE_LAPTOP" "docs" push --docs
+    run_ref_sync_with_docs "$MACHINE_LAPTOP" "docs" push --docs
 
     # Pull on dev-1
-    run_jj_sync_with_docs "$MACHINE_DEV1" "docs" pull --docs
+    run_ref_sync_with_docs "$MACHINE_DEV1" "docs" pull --docs
 
     # Verify deep file exists
     cd_to_machine "$MACHINE_DEV1"
@@ -173,10 +173,10 @@ teardown() {
     done
 
     # Push docs
-    run_jj_sync_with_docs "$MACHINE_LAPTOP" "docs" push --docs
+    run_ref_sync_with_docs "$MACHINE_LAPTOP" "docs" push --docs
 
     # Pull on dev-1
-    run_jj_sync_with_docs "$MACHINE_DEV1" "docs" pull --docs
+    run_ref_sync_with_docs "$MACHINE_DEV1" "docs" pull --docs
 
     # Verify file count
     cd_to_machine "$MACHINE_DEV1"
@@ -196,10 +196,10 @@ teardown() {
     orig_hash=$(sha256sum "docs/large.bin" | cut -d' ' -f1)
 
     # Push docs
-    run_jj_sync_with_docs "$MACHINE_LAPTOP" "docs" push --docs
+    run_ref_sync_with_docs "$MACHINE_LAPTOP" "docs" push --docs
 
     # Pull on dev-1
-    run_jj_sync_with_docs "$MACHINE_DEV1" "docs" pull --docs
+    run_ref_sync_with_docs "$MACHINE_DEV1" "docs" pull --docs
 
     # Verify content matches
     cd_to_machine "$MACHINE_DEV1"
@@ -215,12 +215,12 @@ teardown() {
     make_change "test1.txt" "content1" "Change 1"
     local change1
     change1=$(get_current_change_id)
-    run_jj_sync "$MACHINE_LAPTOP" push
+    run_ref_sync "$MACHINE_LAPTOP" push
 
     # Create change 2 (on top)
     jj new >/dev/null 2>&1
     make_change "test2.txt" "content2" "Change 2"
-    run_jj_sync "$MACHINE_LAPTOP" push
+    run_ref_sync "$MACHINE_LAPTOP" push
 
     # Should have 2 bookmarks now
     local count

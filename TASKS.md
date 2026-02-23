@@ -1,4 +1,4 @@
-# jj-sync cleanup task list
+# ref-sync cleanup task list
 
 Work through tasks in order. Each task is one atomic commit.
 Dependencies are noted — don't start a blocked task until its blockers are done.
@@ -50,7 +50,7 @@ extract_tree "$final_commit" "."
 
 **Completion criteria:**
 - All existing tests pass (`bats tests/`)
-- `shellcheck jj-sync lib/*.sh` clean
+- `shellcheck ref-sync lib/*.sh` clean
 - New test(s) added for the safe extraction behavior
 - Manual verification if test coverage isn't sufficient
 - Commit following commit message guidelines, then move to next task without asking
@@ -60,7 +60,7 @@ extract_tree "$final_commit" "."
 ### Task 8: Fix detect_git_dir failing in subdirectories
 - [ ] **Status:** pending
 
-BUG: `detect_git_dir()` in `lib/git-plumbing.sh:11-30` uses `pwd` and only checks the current directory for `.git/` or `.jj/repo/store/git/`. Running jj-sync from a subdirectory (e.g., `cd src && jj-sync push`) fails with "Not in a git repository" even though the repo exists above.
+BUG: `detect_git_dir()` in `lib/git-plumbing.sh:11-30` uses `pwd` and only checks the current directory for `.git/` or `.jj/repo/store/git/`. Running ref-sync from a subdirectory (e.g., `cd src && ref-sync push`) fails with "Not in a git repository" even though the repo exists above.
 
 **Current code (lib/git-plumbing.sh:11-30):**
 ```bash
@@ -80,13 +80,13 @@ detect_git_dir() {
 Option 1 is simpler and delegates the work to git.
 
 **Before starting, ask the user:**
-- Should jj-sync change its working directory to the repo root after detection? Currently some operations (like doc sync) use relative paths from `pwd`. If someone runs `jj-sync push --docs` from a subdirectory, should doc paths be resolved relative to the repo root or relative to `pwd`? (Recommendation: repo root, matching how git/jj behave.)
+- Should ref-sync change its working directory to the repo root after detection? Currently some operations (like doc sync) use relative paths from `pwd`. If someone runs `ref-sync push --docs` from a subdirectory, should doc paths be resolved relative to the repo root or relative to `pwd`? (Recommendation: repo root, matching how git/jj behave.)
 
-**Test:** Add a test that runs jj-sync from a subdirectory of a repo and verifies it works. Test both colocated and plain git repos.
+**Test:** Add a test that runs ref-sync from a subdirectory of a repo and verifies it works. Test both colocated and plain git repos.
 
 **Completion criteria:**
 - All existing tests pass (`bats tests/`)
-- `shellcheck jj-sync lib/*.sh` clean
+- `shellcheck ref-sync lib/*.sh` clean
 - New test(s) for subdirectory operation
 - Commit following commit message guidelines, then move to next task without asking
 
@@ -95,9 +95,9 @@ Option 1 is simpler and delegates the work to git.
 ### Task 9: Fix --remote/--user/--machine crash on missing argument
 - [ ] **Status:** pending
 
-BUG: In `jj-sync:89-99`, the `--remote`, `--user`, and `--machine` flags do `shift 2` without validating that `$2` exists. With `set -u` (line 2), if a user runs `jj-sync push --remote` (without a value), bash crashes with an unhelpful "unbound variable" error instead of a clear message.
+BUG: In `ref-sync:89-99`, the `--remote`, `--user`, and `--machine` flags do `shift 2` without validating that `$2` exists. With `set -u` (line 2), if a user runs `ref-sync push --remote` (without a value), bash crashes with an unhelpful "unbound variable" error instead of a clear message.
 
-**Current code (jj-sync:89-99):**
+**Current code (ref-sync:89-99):**
 ```bash
 --remote)
     OPT_REMOTE="$2"
@@ -124,11 +124,11 @@ BUG: In `jj-sync:89-99`, the `--remote`, `--user`, and `--machine` flags do `shi
 
 Apply to all three flags. No ambiguities — this task is self-contained and does not require user input to proceed.
 
-**Test:** Add tests that verify `jj-sync push --remote` (no value) produces a clear error with non-zero exit, for each of the three flags.
+**Test:** Add tests that verify `ref-sync push --remote` (no value) produces a clear error with non-zero exit, for each of the three flags.
 
 **Completion criteria:**
 - All existing tests pass (`bats tests/`)
-- `shellcheck jj-sync lib/*.sh` clean
+- `shellcheck ref-sync lib/*.sh` clean
 - New test(s) for missing argument errors
 - Commit following commit message guidelines, then move to next task without asking
 
@@ -167,7 +167,7 @@ No ambiguities — this task is self-contained and does not require user input t
 
 **Completion criteria:**
 - All existing tests pass (`bats tests/`)
-- `shellcheck jj-sync lib/*.sh` clean
+- `shellcheck ref-sync lib/*.sh` clean
 - Commit following commit message guidelines, then move to next task without asking
 
 ---
@@ -184,7 +184,7 @@ Several places silently swallow errors that could mask real problems. Audit each
 3. **lib/docs.sh:181** — `fetch_remote 2>/dev/null || true` in `pull_docs`. Could result in "No docs found on remote" if fetch fails.
 4. **lib/gc.sh:11** — `fetch_remote 2>/dev/null || true` in `gc_revisions`. Stale state if fetch fails.
 5. **lib/git-plumbing.sh:150** — `git_cmd add -f "$file" 2>/dev/null || true` in `create_tree_from_files`. Missing files in tree.
-6. **lib/git-plumbing.sh:259** — `git_cmd fetch "$JJ_SYNC_REMOTE" "$commit" 2>/dev/null || true` in `get_remote_commit`. Returns SHA but object may not exist locally.
+6. **lib/git-plumbing.sh:259** — `git_cmd fetch "$REF_SYNC_REMOTE" "$commit" 2>/dev/null || true` in `get_remote_commit`. Returns SHA but object may not exist locally.
 7. **lib/docs.sh:293** — `find "$dir" -type f -delete 2>/dev/null || true` in `pull_docs` delete loop. May be moot after Task 7.
 
 **Before starting, ask the user:**
@@ -192,18 +192,18 @@ Several places silently swallow errors that could mask real problems. Audit each
 
 **Completion criteria:**
 - All existing tests pass (`bats tests/`)
-- `shellcheck jj-sync lib/*.sh` clean
+- `shellcheck ref-sync lib/*.sh` clean
 - Commit following commit message guidelines, then move to next task without asking
 
 ---
 
 ## Phase 2 — Structure (blocked on Phase 1)
 
-### Task 12: Merge lib/ into single jj-sync script
+### Task 12: Merge lib/ into single ref-sync script
 - [ ] **Status:** pending
 - **Blocked by:** Tasks 7, 8, 9, 10, 11
 
-Merge all `lib/*.sh` files into a single `jj-sync` script. The current 7-file split provides no encapsulation (bash `source` is textual concatenation, all globals shared) and makes navigation harder. Total is ~1,750 lines — well within single-file bash norms.
+Merge all `lib/*.sh` files into a single `ref-sync` script. The current 7-file split provides no encapsulation (bash `source` is textual concatenation, all globals shared) and makes navigation harder. Total is ~1,750 lines — well within single-file bash norms.
 
 **Files to merge (in this order, matching dependency order):**
 1. `lib/ui.sh` (166 lines) — colors, logging, prompts
@@ -235,7 +235,7 @@ main "$@"
 - The `install.sh` copies files — need to check if it copies `lib/`. Should I update it or is it handled separately?
 
 **Steps:**
-1. Read all files, concatenate in order into `jj-sync`
+1. Read all files, concatenate in order into `ref-sync`
 2. Replace the `source` lines and `SCRIPT_DIR` logic with section comment headers
 3. Keep `#!/usr/bin/env bash` and `set -euo pipefail` at top
 4. Delete `lib/` directory entirely
@@ -244,7 +244,7 @@ main "$@"
 
 **Completion criteria:**
 - All existing tests pass (`bats tests/`)
-- `shellcheck jj-sync` clean (single file now)
+- `shellcheck ref-sync` clean (single file now)
 - `lib/` directory removed
 - `install.sh` updated if needed
 - Commit following commit message guidelines, then move to next task without asking
@@ -271,7 +271,7 @@ No ambiguities — this task is self-contained and does not require user input t
 
 **Completion criteria:**
 - All existing tests pass (`bats tests/`)
-- `shellcheck jj-sync` clean
+- `shellcheck ref-sync` clean
 - Commit following commit message guidelines, then move to next task without asking
 
 ---
@@ -282,7 +282,7 @@ No ambiguities — this task is self-contained and does not require user input t
 
 Remove redundant `detect_git_dir` calls. Currently called ~10 times per invocation because each function defensively calls it.
 
-**Call sites to remove (in merged jj-sync, search for `detect_git_dir` calls):**
+**Call sites to remove (in merged ref-sync, search for `detect_git_dir` calls):**
 - `push_docs()` — was docs.sh:115
 - `pull_docs()` — was docs.sh:176
 - `pull_revisions()` — was revisions.sh:105
@@ -298,7 +298,7 @@ No ambiguities — this task is self-contained and does not require user input t
 
 **Completion criteria:**
 - All existing tests pass (`bats tests/`)
-- `shellcheck jj-sync` clean
+- `shellcheck ref-sync` clean
 - Commit following commit message guidelines, then move to next task without asking
 
 ---
@@ -343,7 +343,7 @@ Add tests for SPEC scenarios with zero coverage.
 
 1. **R6 — Amended changes update bookmark**: Create change, push, amend (modify file, same change_id gets new commit_id), push again. Verify remote bookmark updated. Pull on another machine, verify amended content.
 
-2. **R9 — Immutable changes excluded**: Create a change, push it to main (making it immutable), then run jj-sync push. Verify no sync bookmarks created for immutable change.
+2. **R9 — Immutable changes excluded**: Create a change, push it to main (making it immutable), then run ref-sync push. Verify no sync bookmarks created for immutable change.
 
 3. **R10 — `mine()` filter**: This requires creating a change authored by someone else. In jj, you can set a different author via config. Verify only `mine()` changes are pushed.
 
@@ -376,17 +376,17 @@ Add tests for SPEC scenarios with zero coverage.
 Add a "How it works" section to README.md explaining the mechanism so users can evaluate safety.
 
 **Add after Quick Start, before Usage. Content should cover:**
-- `refs/jj-sync/` namespace — invisible to git log, jj log, teammates
+- `refs/ref-sync/` namespace — invisible to git log, jj log, teammates
 - Revision sync mechanism — temp bookmark-like refs pushed then cleaned up
 - Doc sync mechanism — orphan commits via git plumbing, disconnected from repo DAG
 - Safety guarantees — never writes refs/heads/, never modifies working copy commits
-- Namespace format — `refs/jj-sync/sync/<user>/<machine>/...`
-- Escape hatch — `jj-sync clean`
+- Namespace format — `refs/ref-sync/sync/<user>/<machine>/...`
+- Escape hatch — `ref-sync clean`
 
 **Also expand Quick Start** to include remote setup step (currently assumes remote exists).
 
 **Before starting, ask the user:**
-- How technical should the "How it works" section be? Options: (a) High-level for end users — "uses custom git refs, invisible to normal operations" without mentioning plumbing commands, (b) Medium detail — mentions refs/jj-sync/, orphan commits, but not specific git commands, (c) Full detail — mentions git write-tree, commit-tree, etc. for users who want to audit. (Recommendation: option b — enough to build trust without overwhelming.)
+- How technical should the "How it works" section be? Options: (a) High-level for end users — "uses custom git refs, invisible to normal operations" without mentioning plumbing commands, (b) Medium detail — mentions refs/ref-sync/, orphan commits, but not specific git commands, (c) Full detail — mentions git write-tree, commit-tree, etc. for users who want to audit. (Recommendation: option b — enough to build trust without overwhelming.)
 - Should we include the ASCII architecture diagram from SPEC.md showing the personal remote model? It's quite good for understanding the overall flow.
 
 **Completion criteria:**
@@ -404,7 +404,7 @@ Add limitations, prerequisites details, and troubleshooting to README.md.
 
 **1. Limitations section:**
 - Doc sync uses "last write wins" — no three-way merge yet
-- `JJ_SYNC_DOCS` is space-separated, no support for dirs with spaces
+- `REF_SYNC_DOCS` is space-separated, no support for dirs with spaces
 
 **2. Prerequisites clarifications:**
 - macOS ships bash 3.2, need >= 4.0 via Homebrew or Nix
@@ -412,8 +412,8 @@ Add limitations, prerequisites details, and troubleshooting to README.md.
 - Why git >= 2.38 (`git merge-tree --write-tree`)
 
 **3. Troubleshooting section:**
-- `jj-sync status` for diagnostics
-- `jj-sync clean --force` as escape hatch
+- `ref-sync status` for diagnostics
+- `ref-sync clean --force` as escape hatch
 - Common error messages and fixes
 
 **Before starting, ask the user:**

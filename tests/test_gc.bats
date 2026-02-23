@@ -16,7 +16,7 @@ teardown() {
 
     # Create and push a change
     make_change "test.txt" "content" "Test change"
-    run_jj_sync "$MACHINE_LAPTOP" push
+    run_ref_sync "$MACHINE_LAPTOP" push
 
     # Verify bookmark exists
     local count_before
@@ -24,7 +24,7 @@ teardown() {
     [[ "$count_before" -eq 1 ]]
 
     # Run GC with 0-day threshold (should delete everything)
-    JJ_SYNC_GC_REVS_DAYS=0 run_jj_sync "$MACHINE_LAPTOP" gc
+    REF_SYNC_GC_REVS_DAYS=0 run_ref_sync "$MACHINE_LAPTOP" gc
 
     # Verify bookmark is gone
     local count_after
@@ -37,7 +37,7 @@ teardown() {
 
     # Create and push a change
     make_change "test.txt" "content" "Test change"
-    run_jj_sync "$MACHINE_LAPTOP" push
+    run_ref_sync "$MACHINE_LAPTOP" push
 
     # Verify bookmark exists
     local count_before
@@ -45,7 +45,7 @@ teardown() {
     [[ "$count_before" -eq 1 ]]
 
     # Run GC with 30-day threshold (should keep recent)
-    JJ_SYNC_GC_REVS_DAYS=30 run_jj_sync "$MACHINE_LAPTOP" gc
+    REF_SYNC_GC_REVS_DAYS=30 run_ref_sync "$MACHINE_LAPTOP" gc
 
     # Verify bookmark still exists
     local count_after
@@ -60,23 +60,23 @@ teardown() {
     # Create many doc pushes to build up chain
     for i in {1..5}; do
         echo "version $i" > "ai/docs/doc.md"
-        run_jj_sync_with_docs "$MACHINE_LAPTOP" "ai/docs" push --docs
+        run_ref_sync_with_docs "$MACHINE_LAPTOP" "ai/docs" push --docs
     done
 
     # Get chain length before
-    git fetch "$TEST_DIR/remote.git" "refs/jj-sync/sync/$TEST_USER/$MACHINE_LAPTOP/docs" 2>/dev/null
+    git fetch "$TEST_DIR/remote.git" "refs/ref-sync/sync/$TEST_USER/$MACHINE_LAPTOP/docs" 2>/dev/null
     local commit
-    commit=$(git ls-remote "$TEST_DIR/remote.git" "refs/jj-sync/sync/$TEST_USER/$MACHINE_LAPTOP/docs" | cut -f1)
+    commit=$(git ls-remote "$TEST_DIR/remote.git" "refs/ref-sync/sync/$TEST_USER/$MACHINE_LAPTOP/docs" | cut -f1)
     local chain_before
     chain_before=$(git rev-list --count "$commit" 2>/dev/null)
     [[ "$chain_before" -eq 5 ]]
 
     # Run GC with threshold of 3 (should squash)
-    JJ_SYNC_GC_DOCS_MAX_CHAIN=3 run_jj_sync_with_docs "$MACHINE_LAPTOP" "ai/docs" gc
+    REF_SYNC_GC_DOCS_MAX_CHAIN=3 run_ref_sync_with_docs "$MACHINE_LAPTOP" "ai/docs" gc
 
     # Get chain length after
-    git fetch "$TEST_DIR/remote.git" "refs/jj-sync/sync/$TEST_USER/$MACHINE_LAPTOP/docs" 2>/dev/null
-    commit=$(git ls-remote "$TEST_DIR/remote.git" "refs/jj-sync/sync/$TEST_USER/$MACHINE_LAPTOP/docs" | cut -f1)
+    git fetch "$TEST_DIR/remote.git" "refs/ref-sync/sync/$TEST_USER/$MACHINE_LAPTOP/docs" 2>/dev/null
+    commit=$(git ls-remote "$TEST_DIR/remote.git" "refs/ref-sync/sync/$TEST_USER/$MACHINE_LAPTOP/docs" | cut -f1)
     local chain_after
     chain_after=$(git rev-list --count "$commit" 2>/dev/null)
     [[ "$chain_after" -eq 1 ]]
@@ -90,7 +90,7 @@ teardown() {
     echo "final content" > "ai/docs/doc.md"
     for i in {1..5}; do
         echo "version $i" >> "ai/docs/doc.md"
-        run_jj_sync_with_docs "$MACHINE_LAPTOP" "ai/docs" push --docs
+        run_ref_sync_with_docs "$MACHINE_LAPTOP" "ai/docs" push --docs
     done
 
     # Save final content
@@ -98,11 +98,11 @@ teardown() {
     final_content=$(cat "ai/docs/doc.md")
 
     # Run GC with low threshold
-    JJ_SYNC_GC_DOCS_MAX_CHAIN=2 run_jj_sync_with_docs "$MACHINE_LAPTOP" "ai/docs" gc
+    REF_SYNC_GC_DOCS_MAX_CHAIN=2 run_ref_sync_with_docs "$MACHINE_LAPTOP" "ai/docs" gc
 
     # Pull on dev-1 and verify content
     cd_to_machine "$MACHINE_DEV1"
-    run_jj_sync_with_docs "$MACHINE_DEV1" "ai/docs" pull --docs
+    run_ref_sync_with_docs "$MACHINE_DEV1" "ai/docs" pull --docs
 
     assert_file_equals "ai/docs/doc.md" "$final_content"
 }
@@ -112,21 +112,21 @@ teardown() {
 
     # Create and push a change
     make_change "test.txt" "content" "Test change"
-    run_jj_sync "$MACHINE_LAPTOP" push
+    run_ref_sync "$MACHINE_LAPTOP" push
 
     # Count bookmarks before GC
     local count_before
     count_before=$(count_remote_bookmarks "sync/$TEST_USER/*")
 
     # Run GC with high threshold (keep everything)
-    run run_jj_sync "$MACHINE_LAPTOP" gc
+    run run_ref_sync "$MACHINE_LAPTOP" gc
     [[ "$status" -eq 0 ]]
 
     local count_after_first
     count_after_first=$(count_remote_bookmarks "sync/$TEST_USER/*")
 
     # Run GC again
-    run run_jj_sync "$MACHINE_LAPTOP" gc
+    run run_ref_sync "$MACHINE_LAPTOP" gc
     [[ "$status" -eq 0 ]]
 
     local count_after_second
