@@ -552,6 +552,15 @@ list_remote_refs() {
         sed 's|.*refs/jj-sync/||'
 }
 
+# List refs on remote with their commit SHAs
+# Usage: list_remote_refs_with_shas <pattern>
+# Outputs: "sha ref" per line (ref without refs/jj-sync/ prefix)
+list_remote_refs_with_shas() {
+    local pattern="$1"
+    git_cmd ls-remote "$JJ_SYNC_REMOTE" "refs/jj-sync/$pattern" 2>/dev/null |
+        sed 's|refs/jj-sync/||'
+}
+
 # Fetch refs from remote
 # Usage: fetch_remote [refspec...]
 # shellcheck disable=SC2120
@@ -662,12 +671,13 @@ push_revisions() {
         bookmarks_to_push+=("$bookmark_name")
     done
 
-    # Get list of current bookmarks on remote for this machine
+    # Get list of current bookmarks on remote for this machine (with SHAs)
     local remote_bookmarks=()
-    local ref
-    while IFS= read -r ref; do
-        [[ -n "$ref" ]] && remote_bookmarks+=("$ref")
-    done < <(list_remote_refs "$revs_prefix/*")
+    declare -A remote_shas=()
+    local sha ref
+    while read -r sha ref; do
+        [[ -n "$ref" ]] && remote_bookmarks+=("$ref") && remote_shas["$ref"]="$sha"
+    done < <(list_remote_refs_with_shas "$revs_prefix/*")
 
     # Find stale bookmarks (on remote but not in current set)
     local stale_bookmarks=()
@@ -695,31 +705,48 @@ push_revisions() {
         done
     fi
 
-    # Push all bookmarks
+    # Push bookmarks that have changed
+    local pushed_count=0
+    local skipped_count=0
     if [[ ${#bookmarks_to_push[@]} -gt 0 ]]; then
-        verbose "Pushing ${#bookmarks_to_push[@]} bookmarks to remote"
+        # Get commit SHAs for each change and push directly via git
+        # Push to refs/jj-sync/ namespace to avoid jj importing them as bookmarks
+        # (which would make commits immutable)
+        for bookmark in "${bookmarks_to_push[@]}"; do
+            # Extract change_id from bookmark name
+            local change_id="${bookmark##*/}"
 
-        if ! is_dry_run; then
-            # Get commit SHAs for each change and push directly via git
-            # Push to refs/jj-sync/ namespace to avoid jj importing them as bookmarks
-            # (which would make commits immutable)
-            for bookmark in "${bookmarks_to_push[@]}"; do
-                # Extract change_id from bookmark name
-                local change_id="${bookmark##*/}"
+            # Get the commit SHA for this change
+            local commit_sha
+            commit_sha=$(jj log -r "$change_id" --no-graph -T 'commit_id' 2>/dev/null) || continue
 
-                # Get the commit SHA for this change
-                local commit_sha
-                commit_sha=$(jj log -r "$change_id" --no-graph -T 'commit_id' 2>/dev/null) || continue
+            # Skip if remote already has this exact commit
+            if [[ "${remote_shas[$bookmark]:-}" == "$commit_sha" ]]; then
+                verbose "Skipping (unchanged): $bookmark"
+                ((skipped_count++))
+                continue
+            fi
 
-                verbose "Pushing: $bookmark ($commit_sha)"
+            verbose "Pushing: $bookmark ($commit_sha)"
+            if ! is_dry_run; then
                 git_cmd push "$JJ_SYNC_REMOTE" "+$commit_sha:refs/jj-sync/$bookmark" 2>/dev/null || {
                     log_warn "Failed to push bookmark: $bookmark"
+                    continue
                 }
-            done
-        fi
+            fi
+            ((pushed_count++))
+        done
     fi
 
-    log_success "Pushed $change_count revision(s)"
+    if [[ $pushed_count -eq 0 && $skipped_count -gt 0 ]]; then
+        log_info "All $skipped_count revision(s) already up to date"
+    elif [[ $pushed_count -gt 0 ]]; then
+        local msg="Pushed $pushed_count revision(s)"
+        [[ $skipped_count -gt 0 ]] && msg+=" ($skipped_count unchanged)"
+        log_success "$msg"
+    else
+        log_info "No revisions to push"
+    fi
 }
 
 # Pull WIP revisions from the sync remote
