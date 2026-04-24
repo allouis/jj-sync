@@ -37,6 +37,9 @@
             cp jj-sync $out/bin/jj-sync
             chmod +x $out/bin/jj-sync
 
+            # Fix shebang for NixOS (no /usr/bin/env)
+            patchShebangs $out/bin/jj-sync
+
             # Wrap with runtime dependencies in PATH
             wrapProgram $out/bin/jj-sync \
               --prefix PATH : ${pkgs.lib.makeBinPath [
